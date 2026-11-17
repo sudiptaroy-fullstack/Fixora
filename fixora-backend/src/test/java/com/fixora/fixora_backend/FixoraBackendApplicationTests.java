@@ -1,0 +1,13 @@
+package com.fixora.fixora_backend;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+
+@SpringBootTest
+class FixoraBackendApplicationTests {
+
+	@Test
+	void contextLoads() {
+	}
+
+}
