@@ -3,48 +3,76 @@
 }
 
 body {
-  background-color: #E9E9E9;
-  color: #171717;
+  /* 60% Deep Forest Green dominant canvas with subtle warm beige corner glow */
+  background: linear-gradient(135deg, #163324 0%, #1B3B2B 60%, #3E543F 85%, #C9B99F 100%);
+  background-attachment: fixed;
+  color: #1A2E22; /* Deep forest-charcoal text inside beige cards */
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   margin: 0;
   padding: 0;
+  min-height: 100vh;
 }
 
+/* 40% Warm Beige Card Surfaces */
 .neu-card {
-  background: #F2F2F2;
-  box-shadow: 8px 8px 16px #d5d5d5, -8px -8px 16px #ffffff;
+  background: #F5EFE6;
+  box-shadow: 0 12px 26px rgba(10, 26, 18, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.75);
   border-radius: 20px;
+  border: 1px solid #E2D5C1;
 }
 
+/* Warm Deeper Beige Inset Boxes */
+.neu-inset {
+  background: #EADFD0;
+  box-shadow: inset 3px 3px 7px #CBBBA4, inset -3px -3px 7px #FFFDF9;
+  border-radius: 14px;
+  border: 1px solid #DFD2BE;
+}
+
+/* Forest Green Tactile Buttons */
 .neu-button {
-  background: #171717;
-  color: #FFFFFF;
-  box-shadow: 4px 4px 8px #d5d5d5, -4px -4px 8px #ffffff;
+  background: #1B3B2B;
+  color: #F5EFE6;
+  box-shadow: 0 4px 12px rgba(27, 59, 43, 0.28);
   transition: all 0.2s ease;
-  border: none;
+  border: 1px solid #2A5740;
   cursor: pointer;
 }
 
 .neu-button:hover {
-  opacity: 0.92;
+  background: #12291E;
+  transform: translateY(-1px);
 }
 
 .neu-button:active {
-  box-shadow: inset 3px 3px 6px #0d0d0d, inset -3px -3px 6px #212121;
+  transform: translateY(0);
+  box-shadow: inset 2px 2px 5px #0D1F16;
 }
 
 .neu-button:disabled {
-  background: #777777;
+  background: #7A8B81;
   cursor: not-allowed;
+  transform: none;
 }
 
+/* Warm Beige Input Fields */
 .neu-input {
-  background: #E9E9E9;
-  border: none;
-  box-shadow: inset 3px 3px 6px #d5d5d5, inset -3px -3px 6px #ffffff;
+  background: #EADFD0;
+  border: 1px solid #D5C5AE;
+  box-shadow: inset 3px 3px 6px #CBBBA4, inset -3px -3px 6px #FFFDF9;
   border-radius: 12px;
   padding: 14px 16px;
   outline: none;
-  color: #171717;
+  color: #1A2E22;
   font-size: 14px;
+  font-weight: 500;
+}
+
+.neu-input::placeholder {
+  color: #6E6558;
+}
+
+.neu-input:focus {
+  border-color: #1B3B2B;
+  background: #F5EFE6;
 }
