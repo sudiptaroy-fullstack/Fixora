@@ -32,4 +32,14 @@ public class ServiceRequestService {
         }
         throw new RuntimeException("Service request not found with id: " + id);
     }
+
+    // NEW METHOD 1: Get all bookings for one specific customer phone number
+    public List<ServiceRequest> getRequestsByCustomer(String phone) {
+        return serviceRequestRepository.findByCustomerPhone(phone);
+    }
+
+    // NEW METHOD 2: Get all bookings filtered by status (PENDING, ACCEPTED, COMPLETED)
+    public List<ServiceRequest> getRequestsByStatus(String status) {
+        return serviceRequestRepository.findByStatus(status);
+    }
 }
