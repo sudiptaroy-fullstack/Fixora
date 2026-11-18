@@ -1,0 +1,50 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: #E9E9E9;
+  color: #171717;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+.neu-card {
+  background: #F2F2F2;
+  box-shadow: 8px 8px 16px #d5d5d5, -8px -8px 16px #ffffff;
+  border-radius: 20px;
+}
+
+.neu-button {
+  background: #171717;
+  color: #FFFFFF;
+  box-shadow: 4px 4px 8px #d5d5d5, -4px -4px 8px #ffffff;
+  transition: all 0.2s ease;
+  border: none;
+  cursor: pointer;
+}
+
+.neu-button:hover {
+  opacity: 0.92;
+}
+
+.neu-button:active {
+  box-shadow: inset 3px 3px 6px #0d0d0d, inset -3px -3px 6px #212121;
+}
+
+.neu-button:disabled {
+  background: #777777;
+  cursor: not-allowed;
+}
+
+.neu-input {
+  background: #E9E9E9;
+  border: none;
+  box-shadow: inset 3px 3px 6px #d5d5d5, inset -3px -3px 6px #ffffff;
+  border-radius: 12px;
+  padding: 14px 16px;
+  outline: none;
+  color: #171717;
+  font-size: 14px;
+}
