@@ -11,11 +11,17 @@ public class ServiceRequest {
     private Long id;
 
     private String problemDescription;
-    private String category;      // Plumber, Electrician, Carpenter, etc.
+    private String category;      // Plumber, Electrician, Carpenter
     private String status;        // PENDING, ACCEPTED, COMPLETED
     private String customerPhone;
+    private String providerName;  // Assigned technician name
+    private Double price;         // Standard visit/inspection fee
 
-    public ServiceRequest() {}
+    public ServiceRequest() {
+        this.status = "PENDING";
+        this.providerName = "Unassigned";
+        this.price = 499.0;
+    }
 
     public Long getId() {
         return id;
@@ -55,5 +61,21 @@ public class ServiceRequest {
 
     public void setCustomerPhone(String customerPhone) {
         this.customerPhone = customerPhone;
+    }
+
+    public String getProviderName() {
+        return providerName;
+    }
+
+    public void setProviderName(String providerName) {
+        this.providerName = providerName;
+    }
+
+    public Double getPrice() {
+        return price;
+    }
+
+    public void setPrice(Double price) {
+        this.price = price;
     }
 }
