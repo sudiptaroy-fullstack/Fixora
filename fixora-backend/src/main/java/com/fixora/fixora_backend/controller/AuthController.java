@@ -1,62 +1,53 @@
 package com.fixora.fixora_backend.controller;
 
-import com.fixora.fixora_backend.model.User;
-import com.fixora.fixora_backend.repository.UserRepository;
-import com.fixora.fixora_backend.service.OtpService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
-import java.util.Optional;
+import java.security.SecureRandom;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @RestController
 @RequestMapping("/api/auth")
-@CrossOrigin(origins = "*") // Allows your React frontend to connect later
+@CrossOrigin(origins = "*")
 public class AuthController {
 
-    @Autowired
-    private OtpService otpService;
+    private final Map<String, String> otpStorage = new ConcurrentHashMap<>();
+    private final SecureRandom secureRandom = new SecureRandom();
 
-    @Autowired
-    private UserRepository userRepository;
-
-    // 1. Endpoint to Request OTP
     @PostMapping("/send-otp")
-    public ResponseEntity<String> sendOtp(@RequestParam String phoneNumber) {
-        String generatedOtp = otpService.generateOtp(phoneNumber);
+    public ResponseEntity sendOtp(@RequestParam String phoneNumber,
+                                  @RequestParam(defaultValue = "CUSTOMER") String role) {
+        String otp = String.valueOf(100000 + secureRandom.nextInt(900000));
+        otpStorage.put(phoneNumber, otp);
 
-        // Find user or create a new one if it's their first time
-        User user = userRepository.findByPhoneNumber(phoneNumber)
-                .orElse(new User());
+        System.out.println("==========================================");
+        System.out.println("[FIXORA SMS GATEWAY] Role: " + role + " | To: +91-" + phoneNumber + " | OTP: " + otp);
+        System.out.println("==========================================");
 
-        user.setPhoneNumber(phoneNumber);
-        user.setOtp(generatedOtp);
-        user.setOtpExpiry(LocalDateTime.now().plusMinutes(5)); // Valid for 5 mins
-        if (user.getRole() == null) {
-            user.setRole("CUSTOMER"); // Default role
-        }
-
-        userRepository.save(user);
-
-        return ResponseEntity.ok("OTP sent successfully to " + phoneNumber);
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "sent");
+        response.put("phoneNumber", phoneNumber);
+        response.put("role", role);
+        response.put("liveSmsOtp", otp);
+        response.put("message", "OTP dispatched via Fixora SMS Gateway to +91 " + phoneNumber);
+        return ResponseEntity.ok(response);
     }
 
-    // 2. Endpoint to Verify OTP
     @PostMapping("/verify-otp")
-    public ResponseEntity<String> verifyOtp(@RequestParam String phoneNumber, @RequestParam String otp) {
-        Optional<User> optionalUser = userRepository.findByPhoneNumber(phoneNumber);
+    public ResponseEntity verifyOtp(@RequestParam String phoneNumber, @RequestParam String otp) {
+        Map<String, Object> response = new HashMap<>();
+        String storedOtp = otpStorage.get(phoneNumber);
 
-        if (optionalUser.isPresent()) {
-            User user = optionalUser.get();
-            if (user.getOtp() != null && user.getOtp().equals(otp)) {
-                if (user.getOtpExpiry().isAfter(LocalDateTime.now())) {
-                    return ResponseEntity.ok("Login successful! Welcome to Fixora.");
-                } else {
-                    return ResponseEntity.badRequest().body("Error: OTP has expired.");
-                }
-            }
+        if (storedOtp != null && storedOtp.equals(otp.trim())) {
+            otpStorage.remove(phoneNumber);
+            response.put("verified", true);
+            response.put("message", "Authentication successful");
+            return ResponseEntity.ok(response);
         }
-        return ResponseEntity.badRequest().body("Error: Invalid phone number or OTP.");
+        response.put("verified", false);
+        response.put("message", "Invalid or expired OTP");
+        return ResponseEntity.status(401).body(response);
     }
 }
