@@ -17,6 +17,17 @@ public class ProfileWalletController {
     @Autowired
     private UserAccountRepository userRepo;
 
+    // Fetch providers filtered by service category (e.g. GET /api/users/providers/by-service?category=Plumber)
+    @GetMapping("/providers/by-service")
+    public ResponseEntity<List<UserAccount>> getProvidersByService(@RequestParam String category) {
+        if (category == null || category.isBlank() || "ALL".equalsIgnoreCase(category)) {
+            return ResponseEntity.ok(userRepo.findByRole("PROVIDER"));
+        }
+        return ResponseEntity.ok(
+                userRepo.findByRoleAndCategoryIgnoreCase("PROVIDER", category.trim())
+        );
+    }
+
     // 1. Fetch User Profile & Wallet strictly from MySQL
     @GetMapping("/profile/{phone}")
     public ResponseEntity<?> getProfile(@PathVariable String phone,

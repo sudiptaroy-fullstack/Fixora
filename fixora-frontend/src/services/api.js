@@ -20,10 +20,18 @@ export const respondToRequest = (id, action) => API.put(`/requests/${id}/respond
 export const getUserProfile = (phone, role = 'CUSTOMER') => API.get(`/users/profile/${phone}?role=${role}`);
 export const updateUserProfile = (phone, payload) => API.put(`/users/profile/${phone}`, payload);
 export const getAllMarketplaceProviders = () => API.get('/users/providers');
+export const getProvidersByService = (category) =>
+  API.get('/users/providers/by-service', { params: { category } });
 export const withdrawWallet = (phone, amount) => API.post(`/users/wallet/${phone}/withdraw?amount=${amount}`);
 
 export const getAllReviews = () => API.get('/reviews');
 export const addReview = (payload) => API.post('/reviews', payload);
 export const getAdminStats = () => API.get('/admin/stats');
+
+export const createRazorpayOrder = (amount) =>
+  API.post('/payments/create-order', { amount });
+
+export const verifyRazorpayPayment = (paymentResponse) =>
+  API.post('/payments/verify', paymentResponse);
 
 export default API;

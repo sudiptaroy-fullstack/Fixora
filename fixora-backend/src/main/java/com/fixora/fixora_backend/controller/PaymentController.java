@@ -1,44 +1,82 @@
 package com.fixora.fixora_backend.controller;
 
+import com.razorpay.Order;
+import com.razorpay.RazorpayClient;
+import com.razorpay.Utils;
+import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/payment")
+@RequestMapping("/api/payments")
 @CrossOrigin(origins = "*")
 public class PaymentController {
 
-    // 1. Create a mock Razorpay Order ID
+    @Value("${razorpay.key.id:}")
+    private String keyId;
+
+    @Value("${razorpay.key.secret:}")
+    private String keySecret;
+
     @PostMapping("/create-order")
-    public ResponseEntity createOrder(@RequestBody Map<String, Object> data) {
-        double amount = Double.parseDouble(data.getOrDefault("amount", "500").toString());
+    public ResponseEntity<?> createOrder(@RequestBody Map<String, Object> payload) {
+        try {
+            if (keyId.isBlank() || keySecret.isBlank()) {
+                return ResponseEntity.badRequest().body("Razorpay test keys not configured in application.properties");
+            }
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("orderId", "order_" + UUID.randomUUID().toString().substring(0, 10));
-        response.put("amount", (int) (amount * 100)); // Amount in paise (e.g., 500 INR = 50000 paise)
-        response.put("currency", "INR");
-        response.put("status", "created");
+            double amountInr = Double.parseDouble(payload.get("amount").toString());
+            int amountPaise = (int) Math.round(amountInr * 100);
 
-        return ResponseEntity.ok(response);
+            RazorpayClient client = new RazorpayClient(keyId, keySecret);
+
+            JSONObject orderRequest = new JSONObject();
+            orderRequest.put("amount", amountPaise);
+            orderRequest.put("currency", "INR");
+            orderRequest.put("receipt", "fixora_rcpt_" + System.currentTimeMillis());
+
+            Order order = client.orders.create(orderRequest);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("orderId", order.get("id"));
+            response.put("amount", order.get("amount"));
+            response.put("currency", order.get("currency"));
+            response.put("keyId", keyId);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Razorpay order creation failed: " + e.getMessage());
+        }
     }
 
-    // 2. Verify Payment
     @PostMapping("/verify")
-    public ResponseEntity verifyPayment(@RequestBody Map<String, String> paymentData) {
-        String paymentId = paymentData.get("razorpayPaymentId");
+    public ResponseEntity<?> verifyPayment(@RequestBody Map<String, String> payload) {
+        try {
+            String orderId = payload.get("razorpay_order_id");
+            String paymentId = payload.get("razorpay_payment_id");
+            String signature = payload.get("razorpay_signature");
 
-        Map<String, String> result = new HashMap<>();
-        if (paymentId != null && !paymentId.isEmpty()) {
-            result.put("status", "success");
-            result.put("message", "Payment verified successfully!");
-        } else {
-            result.put("status", "failed");
-            result.put("message", "Invalid payment ID.");
+            JSONObject attributes = new JSONObject();
+            attributes.put("razorpay_order_id", orderId);
+            attributes.put("razorpay_payment_id", paymentId);
+            attributes.put("razorpay_signature", signature);
+
+            boolean isValid = Utils.verifyPaymentSignature(attributes, keySecret);
+            if (!isValid) {
+                return ResponseEntity.status(400).body("Invalid Razorpay payment signature.");
+            }
+
+            return ResponseEntity.ok(Map.of(
+                    "verified", true,
+                    "paymentId", paymentId,
+                    "orderId", orderId
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Verification error: " + e.getMessage());
         }
-        return ResponseEntity.ok(result);
     }
 }
