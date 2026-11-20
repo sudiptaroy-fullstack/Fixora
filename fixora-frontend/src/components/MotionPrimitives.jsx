@@ -1,293 +1,183 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
+import { Wrench, Hammer, Cog, Settings, Nut, Sparkles } from 'lucide-react';
 
-/**
- * 1. Continuous 60fps ambient motion video backdrop tailored per webpage
- *    Also automatically plays /fixora-bg.mp4 if placed inside public/
- */
-export function MotionVideoBackdrop({ variant = 'login' }) {
-  const canvasRef = useRef(null);
+const MECHANICAL_ELEMENTS = [
+  { id: 1, Icon: Cog, size: 110, top: '8%', left: '4%', duration: 28, dir: 1, driftY: 22, opacity: 0.08 },
+  { id: 2, Icon: Settings, size: 84, top: '16%', left: '11%', duration: 22, dir: -1, driftY: -18, opacity: 0.07 },
+  { id: 3, Icon: Wrench, size: 68, top: '14%', right: '7%', duration: 14, dir: 1, driftY: 26, opacity: 0.085 },
+  { id: 4, Icon: Cog, size: 130, top: '44%', right: '3%', duration: 34, dir: -1, driftY: -24, opacity: 0.075 },
+  { id: 5, Icon: Hammer, size: 62, top: '52%', left: '6%', duration: 16, dir: 1, driftY: 20, opacity: 0.08 },
+  { id: 6, Icon: Nut, size: 54, top: '72%', left: '14%', duration: 19, dir: -1, driftY: -22, opacity: 0.075 },
+  { id: 7, Icon: Wrench, size: 76, top: '76%', right: '11%', duration: 17, dir: 1, driftY: 24, opacity: 0.08 },
+  { id: 8, Icon: Cog, size: 96, top: '82%', left: '46%', duration: 30, dir: 1, driftY: -16, opacity: 0.065 }
+];
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    let animId;
-    let t = 0;
-
-    const palettes = {
-      login: {
-        bgTop: '#F5EFEA',
-        bgBottom: '#E7D8CC',
-        wave1: 'rgba(234, 88, 12, 0.26)',
-        wave2: 'rgba(194, 65, 12, 0.34)',
-        orb: 'rgba(251, 146, 60, 0.32)'
-      },
-      customer: {
-        bgTop: '#FAF6F1',
-        bgBottom: '#EFE4D8',
-        wave1: 'rgba(249, 115, 22, 0.18)',
-        wave2: 'rgba(217, 119, 6, 0.22)',
-        orb: 'rgba(253, 186, 116, 0.35)'
-      },
-      provider: {
-        bgTop: '#F7F1EA',
-        bgBottom: '#E6D3C1',
-        wave1: 'rgba(180, 83, 9, 0.24)',
-        wave2: 'rgba(234, 88, 12, 0.28)',
-        orb: 'rgba(245, 158, 11, 0.28)'
-      },
-      admin: {
-        bgTop: '#261D18',
-        bgBottom: '#17120F',
-        wave1: 'rgba(249, 115, 22, 0.24)',
-        wave2: 'rgba(234, 88, 12, 0.32)',
-        orb: 'rgba(251, 146, 60, 0.22)'
-      }
-    };
-
-    const p = palettes[variant] || palettes.login;
-
-    const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-    resize();
-    window.addEventListener('resize', resize);
-
-    const particles = Array.from({ length: 24 }, (_, i) => ({
-      x: (i * 97) % window.innerWidth,
-      y: (i * 61) % window.innerHeight,
-      r: 3 + (i % 5) * 2.5,
-      speedY: 0.25 + (i % 4) * 0.14,
-      drift: 0.4 + (i % 3) * 0.2
-    }));
-
-    const render = () => {
-      t += 0.012;
-      const w = canvas.width;
-      const h = canvas.height;
-
-      const grad = ctx.createLinearGradient(0, 0, w, h);
-      grad.addColorStop(0, p.bgTop);
-      grad.addColorStop(1, p.bgBottom);
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, w, h);
-
-      // Glowing floating amber orbs
-      for (let i = 0; i < 3; i++) {
-        const ox = w * (0.25 + i * 0.28) + Math.sin(t * 0.7 + i) * 70;
-        const oy = h * (0.35 + (i % 2) * 0.3) + Math.cos(t * 0.6 + i) * 55;
-        const rad = Math.min(w, h) * (0.28 + i * 0.05);
-        const orbGrad = ctx.createRadialGradient(ox, oy, 10, ox, oy, rad);
-        orbGrad.addColorStop(0, p.orb);
-        orbGrad.addColorStop(1, 'rgba(249,115,22,0)');
-        ctx.fillStyle = orbGrad;
-        ctx.beginPath();
-        ctx.arc(ox, oy, rad, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Sculpted terracotta fluid dune waves
-      [p.wave1, p.wave2].forEach((fill, idx) => {
-        ctx.fillStyle = fill;
-        ctx.beginPath();
-        ctx.moveTo(0, h);
-        for (let x = 0; x <= w; x += 24) {
-          const y =
-            h * (0.74 + idx * 0.08) +
-            Math.sin(x * 0.0035 + t + idx * 1.4) * 34 +
-            Math.cos(x * 0.007 - t * 0.8) * 18;
-          ctx.lineTo(x, y);
-        }
-        ctx.lineTo(w, h);
-        ctx.closePath();
-        ctx.fill();
-      });
-
-      // Rising warm amber light droplets
-      particles.forEach((pt, idx) => {
-        pt.y -= pt.speedY;
-        pt.x += Math.sin(t + idx) * pt.drift;
-        if (pt.y < -20) {
-          pt.y = h + 20;
-          pt.x = Math.random() * w;
-        }
-        ctx.fillStyle = p.orb;
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2);
-        ctx.fill();
-      });
-
-      animId = requestAnimationFrame(render);
-    };
-
-    render();
-    return () => {
-      cancelAnimationFrame(animId);
-      window.removeEventListener('resize', resize);
-    };
-  }, [variant]);
-
+export function MechanicalToolsBackdrop() {
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', overflow: 'hidden' }}>
-      <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
-      {/* Optional real MP4 video overlay if user adds public/fixora-bg.mp4 */}
-      <video
-        autoPlay
-        loop
-        muted
-        playsInline
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 0,
+        pointerEvents: 'none',
+        overflow: 'hidden',
+        background: 'linear-gradient(135deg, #FAF7F2 0%, #F5EFE6 48%, #EFE7DC 100%)'
+      }}
+    >
+      <motion.div
+        animate={{ x: [0, 45, 0], y: [0, -30, 0], scale: [1, 1.08, 1] }}
+        transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
         style={{
           position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          opacity: 0.28,
-          mixBlendMode: 'multiply'
+          top: '-10%',
+          left: '-6%',
+          width: '460px',
+          height: '460px',
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(249, 115, 22, 0.16) 0%, transparent 70%)',
+          filter: 'blur(30px)'
         }}
-        onError={(e) => {
-          e.currentTarget.style.display = 'none';
+      />
+      <motion.div
+        animate={{ x: [0, -40, 0], y: [0, 35, 0], scale: [1, 1.1, 1] }}
+        transition={{ duration: 22, repeat: Infinity, ease: 'easeInOut' }}
+        style={{
+          position: 'absolute',
+          bottom: '-12%',
+          right: '-6%',
+          width: '520px',
+          height: '520px',
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(217, 119, 6, 0.15) 0%, transparent 70%)',
+          filter: 'blur(34px)'
         }}
-      >
-        <source src="/fixora-bg.mp4" type="video/mp4" />
-      </video>
+      />
+
+      {MECHANICAL_ELEMENTS.map((item) => {
+        const ToolIcon = item.Icon;
+        return (
+          <motion.div
+            key={item.id}
+            animate={{
+              rotate: item.dir === 1 ? [0, 360] : [360, 0],
+              y: [0, item.driftY, 0]
+            }}
+            transition={{
+              rotate: { duration: item.duration, repeat: Infinity, ease: 'linear' },
+              y: { duration: item.duration * 0.45, repeat: Infinity, ease: 'easeInOut' }
+            }}
+            style={{
+              position: 'absolute',
+              top: item.top,
+              left: item.left,
+              right: item.right,
+              opacity: item.opacity,
+              color: '#9A3412'
+            }}
+          >
+            <ToolIcon size={item.size} strokeWidth={1.35} />
+          </motion.div>
+        );
+      })}
     </div>
   );
 }
 
-/**
- * 2. Scroll-triggered liquid droplet reveal for headings, text, and cards
- */
-export function DropletReveal({ children, delay = 0, style = {}, className = '' }) {
+// Preserved for Login.jsx & AdminPanel.jsx compatibility
+export function MotionVideoBackdrop({ variant = 'customer' }) {
+  if (variant === 'admin') {
+    return (
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 0,
+          pointerEvents: 'none',
+          background: 'radial-gradient(circle at 20% 20%, #292524 0%, #0C0A09 100%)'
+        }}
+      />
+    );
+  }
+  return <MechanicalToolsBackdrop />;
+}
+
+export function OrangeCrystalsStage() {
+  const crystals = [
+    { top: '12%', left: '18%', size: 84, rotate: 18, delay: 0.1 },
+    { top: '34%', right: '14%', size: 112, rotate: -24, delay: 0.25 },
+    { bottom: '16%', left: '22%', size: 96, rotate: 32, delay: 0.4 }
+  ];
+
   return (
     <motion.div
-      className={className}
-      style={style}
-      initial={{ opacity: 0, y: -22, scale: 0.94, filter: 'blur(6px)' }}
-      whileInView={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
-      viewport={{ once: false, amount: 0.15 }}
-      transition={{
-        type: 'spring',
-        stiffness: 260,
-        damping: 20,
-        mass: 0.85,
-        delay
+      initial={{ opacity: 0, x: 24 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.6 }}
+      style={{
+        borderRadius: '28px',
+        background: 'linear-gradient(145deg, #1C1917 0%, #292524 55%, #9A3412 100%)',
+        padding: '36px',
+        color: '#FAFAF9',
+        position: 'relative',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        border: '1px solid rgba(251, 146, 60, 0.35)',
+        boxShadow: '0 24px 50px rgba(28, 25, 23, 0.24)'
       }}
     >
-      {children}
+      {crystals.map((c, idx) => (
+        <motion.div
+          key={idx}
+          animate={{ y: [0, -14, 0], rotate: [c.rotate, c.rotate + 10, c.rotate] }}
+          transition={{ duration: 5 + idx, repeat: Infinity, ease: 'easeInOut', delay: c.delay }}
+          style={{
+            position: 'absolute',
+            top: c.top,
+            left: c.left,
+            right: c.right,
+            bottom: c.bottom,
+            width: `${c.size}px`,
+            height: `${c.size}px`,
+            borderRadius: '24px',
+            background: 'linear-gradient(135deg, rgba(251, 146, 60, 0.42), rgba(234, 88, 12, 0.12))',
+            border: '1px solid rgba(253, 186, 116, 0.45)',
+            backdropFilter: 'blur(8px)'
+          }}
+        />
+      ))}
+
+      <div style={{ position: 'relative', zIndex: 2 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 12px', borderRadius: '999px', background: 'rgba(249,115,22,0.2)', color: '#FDBA74', fontSize: '11.5px', fontWeight: '800' }}>
+          <Sparkles size={13} /> Escrow-Protected Home Services
+        </span>
+        <h2 style={{ fontSize: '30px', fontWeight: '800', margin: '16px 0 10px 0', lineHeight: 1.2 }}>
+          Verified specialists at your doorstep.
+        </h2>
+        <p style={{ fontSize: '13.5px', color: '#D6D3D1', lineHeight: 1.6, margin: 0 }}>
+          Instant AI issue diagnosis, fixed upfront pricing, and Razorpay escrow protection on every booking.
+        </p>
+      </div>
+
+      <div style={{ position: 'relative', zIndex: 2, padding: '16px 18px', borderRadius: '18px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', fontSize: '12.5px', color: '#FED7AA' }}>
+        <strong>Live Dispatch Network:</strong> Plumbers • Electricians • AC Technicians • Home Cleaning • Painting
+      </div>
     </motion.div>
   );
 }
 
-/**
- * 3. Translucent orange glass crystals that animate in FIRST on the Login screen
- */
-export function OrangeCrystalsStage() {
+export function DropletReveal({ children, delay = 0 }) {
   return (
-    <div
-      style={{
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-        minHeight: '520px',
-        display: 'flex',
-        alignItems: 'flex-end',
-        justifyContent: 'center',
-        overflow: 'hidden',
-        padding: '32px'
-      }}
+    <motion.div
+      initial={{ opacity: 0, y: 18, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ type: 'spring', stiffness: 220, damping: 22, delay }}
     >
-      {/* Back tall amber glass crystal */}
-      <motion.div
-        initial={{ opacity: 0, y: 120, scaleY: 0.65, rotate: -6 }}
-        animate={{ opacity: 1, y: [0, -10, 0], scaleY: 1, rotate: -3 }}
-        transition={{
-          opacity: { duration: 0.45, delay: 0.05 },
-          scaleY: { type: 'spring', stiffness: 180, damping: 16, delay: 0.05 },
-          y: { duration: 5.5, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }
-        }}
-        style={{
-          position: 'absolute',
-          right: '24%',
-          bottom: '10%',
-          width: '155px',
-          height: '360px',
-          borderRadius: '90px 90px 24px 24px',
-          background: 'linear-gradient(160deg, rgba(251, 146, 60, 0.52), rgba(194, 65, 12, 0.78))',
-          backdropFilter: 'blur(14px)',
-          border: '1.5px solid rgba(255, 237, 213, 0.65)',
-          boxShadow: '0 24px 48px rgba(194, 65, 12, 0.32), inset 0 2px 12px rgba(255,255,255,0.5)'
-        }}
-      />
-
-      {/* Middle glowing burnt-orange crystal */}
-      <motion.div
-        initial={{ opacity: 0, y: 140, scaleY: 0.6, rotate: 8 }}
-        animate={{ opacity: 1, y: [0, 12, 0], scaleY: 1, rotate: 4 }}
-        transition={{
-          opacity: { duration: 0.45, delay: 0.18 },
-          scaleY: { type: 'spring', stiffness: 190, damping: 16, delay: 0.18 },
-          y: { duration: 4.8, repeat: Infinity, ease: 'easeInOut', delay: 0.7 }
-        }}
-        style={{
-          position: 'absolute',
-          right: '10%',
-          bottom: '14%',
-          width: '140px',
-          height: '300px',
-          borderRadius: '80px 80px 20px 20px',
-          background: 'linear-gradient(155deg, rgba(253, 186, 116, 0.48), rgba(234, 88, 12, 0.75))',
-          backdropFilter: 'blur(16px)',
-          border: '1.5px solid rgba(255, 255, 255, 0.6)',
-          boxShadow: '0 20px 42px rgba(234, 88, 12, 0.28), inset 0 2px 10px rgba(255,255,255,0.55)'
-        }}
-      />
-
-      {/* Front frosted prism crystal */}
-      <motion.div
-        initial={{ opacity: 0, y: 100, scale: 0.75 }}
-        animate={{ opacity: 1, y: [0, -7, 0], scale: 1 }}
-        transition={{
-          opacity: { duration: 0.4, delay: 0.28 },
-          scale: { type: 'spring', stiffness: 210, damping: 17, delay: 0.28 },
-          y: { duration: 4.2, repeat: Infinity, ease: 'easeInOut', delay: 0.9 }
-        }}
-        style={{
-          position: 'relative',
-          zIndex: 3,
-          width: '100%',
-          background: 'rgba(255, 251, 247, 0.62)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255, 255, 255, 0.85)',
-          borderRadius: '24px',
-          padding: '22px 24px',
-          boxShadow: '0 20px 44px rgba(28, 25, 23, 0.14)'
-        }}
-      >
-        <div
-          style={{
-            fontSize: '11px',
-            fontWeight: '800',
-            color: '#C2410C',
-            letterSpacing: '0.9px',
-            textTransform: 'uppercase'
-          }}
-        >
-          AI-DRIVEN HOME CARE
-        </div>
-        <h3 style={{ margin: '8px 0 6px 0', fontSize: '22px', fontWeight: '800', color: '#1C1917', lineHeight: 1.25 }}>
-          The smarter way to maintain your{' '}
-          <span className="serif-italic" style={{ fontSize: '27px', color: '#EA580C' }}>
-            sanctuary.
-          </span>
-        </h3>
-        <p style={{ margin: 0, fontSize: '12.5px', color: '#44403C', lineHeight: 1.5 }}>
-          Instant AI root-cause diagnosis, verified local plumbers, electricians & carpenters, and protected escrow checkout.
-        </p>
-      </motion.div>
-    </div>
+      {children}
+    </motion.div>
   );
 }
