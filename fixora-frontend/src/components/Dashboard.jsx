@@ -1,780 +1,862 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   getAiRecommendation,
+  getServicePackages,
   createServiceRequest,
   getCustomerRequests,
-  getAllRequests,
-  updateRequestStatus,
-  getAdminStats,
-  createPaymentOrder,
-  verifyPaymentOrder
+  getProviderRequests,
+  respondToRequest,
+  getUserProfile,
+  updateUserProfile,
+  getAllMarketplaceProviders,
+  withdrawWallet,
+  getAllReviews,
+  addReview
 } from '../services/api';
+import FixoraNavbar from './FixoraNavbar';
+import FixoraFooter from './FixoraFooter';
+import { MotionVideoBackdrop, DropletReveal } from './MotionPrimitives';
 import {
-  Wrench,
-  Zap,
-  Hammer,
-  Sparkles,
-  CheckCircle,
-  Clock,
-  LogOut,
-  CreditCard,
-  UserCheck,
-  Star,
-  Phone,
-  ShieldCheck,
-  Activity
+  Wrench, Zap, Hammer, Sparkles, Search,
+  CreditCard, Star, Banknote,
+  BarChart3, XCircle, Check, MapPin, Wind, Paintbrush, Droplets, Clock
 } from 'lucide-react';
 
-export default function Dashboard({ userPhone, onLogout }) {
-  const [viewMode, setViewMode] = useState('CUSTOMER'); // 'CUSTOMER' or 'ADMIN'
+const CATEGORY_TILES = [
+  { id: 'Plumber', title: 'Plumber & Pipe Care', icon: Wrench, color: '#EA580C' },
+  { id: 'Electrician', title: 'Electrician & Wiring', icon: Zap, color: '#D97706' },
+  { id: 'Carpenter', title: 'Carpenter & Woodwork', icon: Hammer, color: '#C2410C' },
+  { id: 'AC & Appliance', title: 'AC & Appliance Repair', icon: Wind, color: '#EA580C' },
+  { id: 'Cleaning', title: 'Bathroom & Home Cleaning', icon: Droplets, color: '#B45309' },
+  { id: 'Painting', title: 'Painting & Waterproofing', icon: Paintbrush, color: '#9A3412' }
+];
+
+export default function Dashboard({ userSession, onLogout }) {
+  const userPhone = userSession?.phone || '';
+  const userRole = userSession?.role || 'CUSTOMER';
+
+  const [section, setSection] = useState('HOME'); // HOME | BOOKINGS | PROFILE
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const [profile, setProfile] = useState(null);
+  const [providersList, setProvidersList] = useState([]);
+  const [packagesList, setPackagesList] = useState([]);
+  const [selectedProviderPhone, setSelectedProviderPhone] = useState('');
+  const [paymentMode, setPaymentMode] = useState('RAZORPAY_UPI');
   const [problemDescription, setProblemDescription] = useState('');
   const [recommendation, setRecommendation] = useState(null);
-  const [myBookings, setMyBookings] = useState([]);
-  const [allBookings, setAllBookings] = useState([]);
-  const [adminStats, setAdminStats] = useState({
-    totalRequests: 0,
-    pendingJobs: 0,
-    acceptedJobs: 0,
-    completedJobs: 0
-  });
+  const [bookings, setBookings] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [banner, setBanner] = useState('');
   const [loadingAi, setLoadingAi] = useState(false);
-  const [bannerMessage, setBannerMessage] = useState('');
-  const [paidJobIds, setPaidJobIds] = useState([]);
+  const [reviewForm, setReviewForm] = useState({ serviceCategory: '', rating: 5, comment: '' });
 
-  // Color-coded category icons (Blue Plumber, Yellow Electrician, Orange Carpenter)
-  const categories = [
-    {
-      name: 'Plumber',
-      icon: <Wrench size={26} color="#0284C7" />,
-      badgeBg: '#E0F2FE',
-      badgeBorder: '#7DD3FC',
-      accentColor: '#0284C7',
-      tag: 'Water & Piping',
-      desc: 'Pipes, leaks, taps & bathroom fittings',
-      price: 499
-    },
-    {
-      name: 'Electrician',
-      icon: <Zap size={26} color="#D97706" fill="#F59E0B" />,
-      badgeBg: '#FEF3C7',
-      badgeBorder: '#FDE68A',
-      accentColor: '#D97706',
-      tag: 'Power & Wiring',
-      desc: 'Fans, switches, MCB & appliance wiring',
-      price: 399
-    },
-    {
-      name: 'Carpenter',
-      icon: <Hammer size={26} color="#EA580C" />,
-      badgeBg: '#FFEDD5',
-      badgeBorder: '#FDBA74',
-      accentColor: '#EA580C',
-      tag: 'Wood & Fixtures',
-      desc: 'Doors, locks, cabinets & furniture repair',
-      price: 549
-    },
-  ];
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawUpiOrBank, setWithdrawUpiOrBank] = useState('');
+  const [fallbackCheckout, setFallbackCheckout] = useState(null);
 
-  const getCategoryColor = (catName) => {
-    if (!catName) return '#1B3B2B';
-    const lower = catName.toLowerCase();
-    if (lower.includes('plumb')) return '#0284C7';
-    if (lower.includes('electr')) return '#D97706';
-    if (lower.includes('carpent')) return '#EA580C';
-    return '#1B3B2B';
-  };
-
-  const getStatusStyle = (status) => {
-    const s = (status || 'PENDING').toUpperCase();
-    if (s === 'COMPLETED') {
-      return { bg: '#D1FAE5', text: '#065F46', border: '#6EE7B7' };
-    }
-    if (s === 'ACCEPTED') {
-      return { bg: '#DBEAFE', text: '#1E40AF', border: '#93C5FD' };
-    }
-    return { bg: '#FEF3C7', text: '#92400E', border: '#FDE68A' };
-  };
-
-  const loadDashboardData = async () => {
+  const loadAll = async () => {
+    if (!userPhone) return;
     try {
-      const allRes = await getAllRequests();
-      const allList = allRes.data || [];
-      setAllBookings(allList);
+      const [profRes, provRes, pkgRes, revRes, reqRes] = await Promise.all([
+        getUserProfile(userPhone, userRole),
+        getAllMarketplaceProviders(),
+        getServicePackages().catch(() => ({ data: [] })),
+        getAllReviews().catch(() => ({ data: [] })),
+        userRole === 'CUSTOMER' ? getCustomerRequests(userPhone) : getProviderRequests(userPhone)
+      ]);
 
-      try {
-        const custRes = await getCustomerRequests(userPhone);
-        setMyBookings(custRes.data || []);
-      } catch (e) {
-        setMyBookings(allList.filter(b => b.customerPhone === userPhone));
+      if (profRes.data) setProfile(profRes.data);
+
+      const provData = provRes.data || [];
+      setProvidersList(provData);
+      if (provData.length > 0 && !selectedProviderPhone) {
+        setSelectedProviderPhone(provData[0].phone);
       }
 
-      try {
-        const statsRes = await getAdminStats();
-        if (statsRes.data) setAdminStats(statsRes.data);
-      } catch (e) {
-        setAdminStats({
-          totalRequests: allList.length,
-          pendingJobs: allList.filter(r => r.status === 'PENDING').length,
-          acceptedJobs: allList.filter(r => r.status === 'ACCEPTED').length,
-          completedJobs: allList.filter(r => r.status === 'COMPLETED').length,
-        });
-      }
-    } catch (err) {
-      console.error('Error loading dashboard data:', err);
+      setPackagesList(pkgRes.data || []);
+      setReviews(revRes.data || []);
+      setBookings(reqRes.data || []);
+    } catch (e) {
+      console.error('Database sync error:', e);
+      setBanner('Could not fetch live records from database.');
     }
   };
 
   useEffect(() => {
-    loadDashboardData();
-  }, [viewMode]);
+    loadAll();
+  }, [userPhone, userRole]);
 
   const handleAiDiagnose = async (e) => {
     e.preventDefault();
     if (!problemDescription.trim()) return;
-
     setLoadingAi(true);
-    setBannerMessage('');
     try {
       const res = await getAiRecommendation(problemDescription);
       setRecommendation(res.data);
-    } catch (err) {
-      setBannerMessage('Could not fetch AI recommendation. Make sure backend is running on port 8081.');
+      const match = providersList.find(p => p.category?.toLowerCase() === res.data?.category?.toLowerCase());
+      if (match) setSelectedProviderPhone(match.phone);
+    } catch {
+      setBanner('AI Diagnosis unavailable. Check backend on port 8081.');
     } finally {
       setLoadingAi(false);
     }
   };
 
-  const handleBookService = async (categoryName, customDesc, assignedProvider, customPrice) => {
+  const finalizeBooking = async (providerObj, desc, amount, methodUsed, paymentRefId = '') => {
+    await createServiceRequest({
+      problemDescription: paymentRefId ? `${desc} [Razorpay ID: ${paymentRefId}]` : desc,
+      category: providerObj.category,
+      customerPhone: userPhone,
+      customerName: profile?.fullName || '',
+      customerAddress: profile?.address || '',
+      customerCity: profile?.city || '',
+      providerPhone: providerObj.phone,
+      providerName: providerObj.fullName,
+      price: amount,
+      paymentMethod: methodUsed
+    });
+    setProblemDescription('');
+    setRecommendation(null);
+    setFallbackCheckout(null);
+    setSection('BOOKINGS');
+    loadAll();
+  };
+
+  const openRazorpaySandbox = (providerObj, desc, amount) => {
+    const rzpKey = import.meta.env.VITE_RAZORPAY_KEY;
+    if (typeof window.Razorpay === 'undefined' || !rzpKey) {
+      setFallbackCheckout({ providerObj, desc, amount });
+      return;
+    }
+
+    const options = {
+      key: rzpKey,
+      amount: Math.round(amount * 100),
+      currency: 'INR',
+      name: 'Fixora Home Care',
+      description: `${providerObj.category} — ${desc}`,
+      prefill: {
+        name: profile?.fullName || '',
+        email: profile?.email || '',
+        contact: userPhone
+      },
+      theme: { color: '#EA580C' },
+      handler: async function (response) {
+        const payId = response.razorpay_payment_id || 'rzp_verified';
+        await finalizeBooking(providerObj, desc, amount, 'RAZORPAY_UPI', payId);
+        setBanner(`Razorpay Payment Confirmed (${payId})! ₹${amount} held in Escrow for ${providerObj.fullName}.`);
+      },
+      modal: {
+        ondismiss: function () {
+          setBanner('Razorpay checkout closed before payment.');
+        }
+      }
+    };
+
     try {
-      await createServiceRequest({
-        problemDescription: customDesc || `Standard ${categoryName} visit & inspection`,
-        category: categoryName,
-        customerPhone: userPhone,
-        providerName: assignedProvider || 'Assigning technician...',
-        price: customPrice || 499.0
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', function (resp) {
+        setBanner(`Razorpay Payment Failed: ${resp.error?.description || 'Try again'}`);
       });
-      setBannerMessage(`Booked ${categoryName} service successfully!`);
-      setProblemDescription('');
-      setRecommendation(null);
-      loadDashboardData();
-    } catch (err) {
-      setBannerMessage('Failed to book service request.');
+      rzp.open();
+    } catch {
+      setFallbackCheckout({ providerObj, desc, amount });
     }
   };
 
-  const handlePayNow = async (booking) => {
+  const handleBookService = async (chosenProvider, customProblem, customPrice) => {
+    const providerObj = chosenProvider || providersList.find(p => p.phone === selectedProviderPhone) || providersList[0];
+    if (!providerObj) {
+      setBanner('No registered specialists found in database. Register a Provider account first.');
+      return;
+    }
+
+    const amount = customPrice || providerObj.hourlyRate || 399;
+    const desc = customProblem || problemDescription || `Doorstep ${providerObj.category} service`;
+
+    if (paymentMode === 'COD') {
+      await finalizeBooking(providerObj, desc, amount, 'COD');
+      setBanner(`Booked ${providerObj.fullName} via Cash on Delivery (₹${amount}).`);
+      return;
+    }
+
+    openRazorpaySandbox(providerObj, desc, amount);
+  };
+
+  const handleBookPackage = (pkg) => {
+    const matchedProvider =
+      providersList.find(p => p.category?.toLowerCase().includes(pkg.category?.toLowerCase())) ||
+      providersList[0];
+    handleBookService(matchedProvider, `${pkg.title} (${pkg.duration})`, pkg.price);
+  };
+
+  const handleWithdrawSubmit = async (e) => {
+    e.preventDefault();
+    const amt = Number(withdrawAmount);
+    if (!amt || amt <= 0) {
+      setBanner('Enter a valid withdrawal amount greater than ₹0.');
+      return;
+    }
     try {
-      setBannerMessage('Creating Razorpay payment order...');
-      let orderId = 'order_demo_' + booking.id;
-
-      try {
-        const orderRes = await createPaymentOrder({
-          amount: booking.price || 499,
-          customerPhone: userPhone,
-          serviceRequestId: booking.id
-        });
-        if (orderRes.data && orderRes.data.orderId) {
-          orderId = orderRes.data.orderId;
-        }
-      } catch (e) {
-        console.warn('Using fallback mock order ID');
-      }
-
-      const confirmPay = window.confirm(
-        `Fixora Secure Checkout\n\nOrder ID: ${orderId}\nService: ${booking.category}\nAmount: ₹${booking.price || 499}\n\nClick OK to complete payment.`
-      );
-
-      if (confirmPay) {
-        const mockPaymentId = 'pay_' + Math.random().toString(36).substring(2, 10);
-        try {
-          await verifyPaymentOrder({
-            orderId: orderId,
-            razorpayPaymentId: mockPaymentId
-          });
-        } catch (e) {
-          console.warn('Payment verified locally');
-        }
-        setPaidJobIds([...paidJobIds, booking.id]);
-        setBannerMessage(`Payment of ₹${booking.price || 499} verified! (Order: ${orderId})`);
-      } else {
-        setBannerMessage('Payment cancelled.');
-      }
+      const res = await withdrawWallet(userPhone, amt);
+      setProfile(res.data);
+      setWithdrawOpen(false);
+      setWithdrawAmount('');
+      setBanner(`Withdrew ₹${amt} to ${withdrawUpiOrBank}. Updated wallet: ₹${res.data.walletBalance}.`);
     } catch (err) {
-      setBannerMessage('Payment failed.');
+      setBanner(err?.response?.data || 'Withdrawal failed. Check your wallet balance.');
     }
   };
 
-  const handleStatusChange = async (id, newStatus) => {
+  const handleProviderAction = async (bookingId, action) => {
     try {
-      await updateRequestStatus(id, newStatus);
-      setBannerMessage(`Job #${id} marked as ${newStatus}!`);
-      loadDashboardData();
-    } catch (err) {
-      setBannerMessage('Failed to update job status.');
+      await respondToRequest(bookingId, action);
+      setBanner(`Booking #${bookingId} marked as ${action}.`);
+      loadAll();
+    } catch {
+      setBanner('Failed to update job status.');
     }
   };
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    if (!profile) return;
+    try {
+      const res = await updateUserProfile(userPhone, profile);
+      setProfile(res.data);
+      setBanner('Profile & doorstep address updated in database!');
+      setSection('HOME');
+    } catch {
+      setBanner('Failed to update profile.');
+    }
+  };
+
+  const handlePostReview = async (e) => {
+    e.preventDefault();
+    if (!reviewForm.comment.trim() || !reviewForm.serviceCategory) return;
+    try {
+      await addReview({
+        customerName: profile?.fullName || userPhone,
+        serviceCategory: reviewForm.serviceCategory,
+        rating: Number(reviewForm.rating),
+        comment: reviewForm.comment
+      });
+      setReviewForm({ serviceCategory: '', rating: 5, comment: '' });
+      setBanner('Review saved to database!');
+      loadAll();
+    } catch {
+      setBanner('Could not publish review.');
+    }
+  };
+
+  const filteredProviders = providersList.filter((p) => {
+    const matchesCat =
+      selectedCategoryFilter === 'ALL' ||
+      p.category?.toLowerCase().includes(selectedCategoryFilter.toLowerCase());
+    const matchesSearch =
+      !searchQuery.trim() ||
+      p.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.category?.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCat && matchesSearch;
+  });
+
+  const pendingCount = bookings.filter(b => b.status === 'PENDING').length;
+  const activeCount = bookings.filter(b => b.status === 'ACCEPTED').length;
+  const completedCount = bookings.filter(b => b.status === 'COMPLETED').length;
+  const declinedCount = bookings.filter(b => b.status === 'DECLINED').length;
+  const maxBar = Math.max(1, pendingCount, activeCount, completedCount, declinedCount);
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #163324 0%, #1B3B2B 60%, #3E543F 84%, #D8C8B0 100%)',
-      padding: '28px 42px'
-    }}>
-      {/* Top Navbar (Beige surface on Forest Green background) */}
-      <div className="neu-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 28px', marginBottom: '26px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{
-            width: '44px',
-            height: '44px',
-            borderRadius: '12px',
-            background: 'linear-gradient(135deg, #1B3B2B, #2D5A43)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#F5EFE6',
-            fontWeight: '800',
-            fontSize: '20px',
-            boxShadow: '0 4px 10px rgba(27, 59, 43, 0.35)'
-          }}>
-            F
-          </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h2 style={{ margin: 0, fontSize: '23px', fontWeight: '800', color: '#1A2E22' }}>Fixora</h2>
-              <span style={{
-                fontSize: '11px',
-                fontWeight: '700',
-                padding: '2px 9px',
-                borderRadius: '99px',
-                backgroundColor: '#DCE8E0',
-                color: '#1B3B2B',
-                border: '1px solid #B5CBBF'
-              }}>
-                Smart Home Services
-              </span>
-            </div>
-            <div style={{ fontSize: '12px', color: '#4E5D53', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
-              <Phone size={12} color="#1B3B2B" /> Logged in: <strong style={{ color: '#1A2E22' }}>{userPhone}</strong>
-              <span style={{ color: '#15803D', fontWeight: '700', marginLeft: '4px' }}>● Active</span>
-            </div>
-          </div>
-        </div>
+    <div style={{ minHeight: '100vh', padding: '24px 36px', position: 'relative' }}>
+      <MotionVideoBackdrop variant={userRole === 'PROVIDER' ? 'provider' : 'customer'} />
 
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <button
-            onClick={() => setViewMode(viewMode === 'CUSTOMER' ? 'ADMIN' : 'CUSTOMER')}
-            className="neu-button"
-            style={{
-              padding: '10px 18px',
-              borderRadius: '11px',
-              background: viewMode === 'ADMIN' ? 'linear-gradient(135deg, #0284C7, #0369A1)' : '#1B3B2B',
-              fontSize: '13px',
-              fontWeight: '600',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '7px'
-            }}
-          >
-            <Activity size={15} />
-            {viewMode === 'CUSTOMER' ? 'Switch to Provider / Admin View' : 'Switch to Customer View'}
-          </button>
+      <motion.div
+        initial={{ opacity: 0, y: 20, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ type: 'spring', stiffness: 200, damping: 22 }}
+        className="glass-window"
+        style={{ maxWidth: '1380px', margin: '0 auto', padding: '24px 34px', position: 'relative', zIndex: 2 }}
+      >
+        <FixoraNavbar
+          userRole={userRole}
+          profile={profile}
+          activeSection={section}
+          onSelectSection={setSection}
+          onOpenWithdraw={() => setWithdrawOpen(true)}
+          onLogout={onLogout}
+        />
 
-          <button
-            onClick={onLogout}
-            className="neu-button"
-            style={{
-              padding: '10px 16px',
-              borderRadius: '11px',
-              backgroundColor: '#2C4A3A',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '13px',
-              fontWeight: '600'
-            }}
-          >
-            <LogOut size={15} color="#FCA5A5" /> Logout
-          </button>
-        </div>
-      </div>
+        <AnimatePresence>
+          {banner && (
+            <motion.div
+              initial={{ opacity: 0, y: -14 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              style={{ padding: '13px 18px', marginBottom: '20px', borderRadius: '16px', background: 'rgba(255, 247, 237, 0.94)', border: '1px solid #FDBA74', color: '#9A3412', fontWeight: '700', fontSize: '13px', display: 'flex', justifyContent: 'space-between' }}
+            >
+              <span>✓ {banner}</span>
+              <button onClick={() => setBanner('')} style={{ background: 'none', border: 'none', fontWeight: '800', cursor: 'pointer' }}>✕</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-      {/* Status Notification Banner */}
-      {bannerMessage && (
-        <div className="neu-card" style={{
-          padding: '14px 22px',
-          marginBottom: '24px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          fontWeight: '600',
-          fontSize: '14px',
-          backgroundColor: '#ECFDF5',
-          color: '#065F46',
-          borderLeft: '5px solid #10B981'
-        }}>
-          <CheckCircle size={18} color="#10B981" /> {bannerMessage}
-        </div>
-      )}
-
-      {viewMode === 'CUSTOMER' ? (
-        /* ================= CUSTOMER VIEW ================= */
-        <div style={{ display: 'grid', gridTemplateColumns: '1.35fr 1fr', gap: '28px' }}>
-          {/* Left Column: AI Diagnosis + Quick Book */}
-          <div>
-            {/* AI Diagnosis Card */}
-            <div className="neu-card" style={{ padding: '26px', marginBottom: '28px', borderTop: '4px solid #2D6A4F' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{
-                    width: '42px',
-                    height: '42px',
-                    borderRadius: '12px',
-                    backgroundColor: '#DCE8E0',
-                    border: '1px solid #B5CBBF',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <Sparkles size={22} color="#1B3B2B" />
-                  </div>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '18px', color: '#1A2E22' }}>AI Smart Problem Diagnosis</h3>
-                    <p style={{ fontSize: '12px', color: '#5A5246', margin: '2px 0 0 0' }}>
-                      Describe what is broken and Fixora AI will match the highest-rated specialist.
-                    </p>
-                  </div>
-                </div>
-                <span style={{
-                  fontSize: '11px',
-                  fontWeight: '700',
-                  padding: '4px 10px',
-                  borderRadius: '8px',
-                  backgroundColor: '#DCE8E0',
-                  color: '#1B3B2B'
-                }}>
-                  AI Powered
-                </span>
-              </div>
-
-              <form onSubmit={handleAiDiagnose} style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-                <input
-                  type="text"
-                  className="neu-input"
-                  placeholder="e.g., Kitchen sink pipe is leaking or bedroom fan is making noise..."
-                  value={problemDescription}
-                  onChange={(e) => setProblemDescription(e.target.value)}
-                  style={{ flex: 1 }}
-                />
-                <button
-                  type="submit"
-                  className="neu-button"
-                  style={{
-                    padding: '12px 24px',
-                    borderRadius: '12px',
-                    fontWeight: '600',
-                    background: 'linear-gradient(135deg, #1B3B2B, #2D5A43)'
-                  }}
-                  disabled={loadingAi}
-                >
-                  {loadingAi ? 'Analyzing...' : 'Diagnose'}
-                </button>
-              </form>
-
-              {recommendation && (
-                <div className="neu-inset" style={{
-                  marginTop: '20px',
-                  padding: '18px 20px',
-                  borderLeft: '4px solid #1B3B2B'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <span style={{
-                        fontSize: '11px',
-                        fontWeight: '800',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.6px',
-                        color: '#1B3B2B',
-                        backgroundColor: '#DCE8E0',
-                        padding: '3px 8px',
-                        borderRadius: '6px'
-                      }}>
-                        AI MATCH • {recommendation.category}
-                      </span>
-                      <h4 style={{ margin: '8px 0 4px 0', fontSize: '18px', color: '#1A2E22' }}>
-                        {recommendation.providerName}
-                      </h4>
-                      <p style={{ margin: 0, fontSize: '12px', color: '#5A5246' }}>{recommendation.matchReason}</p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px', fontSize: '13px', fontWeight: '700' }}>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          backgroundColor: '#FEF3C7',
-                          color: '#B45309',
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          fontSize: '12px'
-                        }}>
-                          <Star size={13} fill="#F59E0B" color="#F59E0B" /> {recommendation.rating} / 5.0
-                        </span>
-                        <span style={{ color: '#3D372E', fontSize: '12px' }}>
-                          • {recommendation.completedJobs} Jobs Completed
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleBookService(recommendation.category, problemDescription, recommendation.providerName, 499)}
-                      className="neu-button"
-                      style={{
-                        padding: '12px 20px',
-                        borderRadius: '11px',
-                        fontWeight: '700',
-                        background: 'linear-gradient(135deg, #1B3B2B, #2D5A43)'
-                      }}
-                    >
-                      Book for ₹499
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Instant Category Booking Header (Light Beige Text on Forest Green background) */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '19px', color: '#F5EFE6' }}>Instant Category Booking</h3>
-              <span style={{ fontSize: '12px', color: '#D8C8B0', fontWeight: '500' }}>Verified doorstep specialists</span>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '18px' }}>
-              {categories.map((cat) => (
-                <div
-                  key={cat.name}
-                  className="neu-card"
-                  style={{
-                    padding: '22px 18px',
-                    textAlign: 'center',
-                    borderTop: `4px solid ${cat.accentColor}`,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between'
-                  }}
-                >
-                  <div>
-                    {/* Colored Service Logo Circle (Blue / Yellow / Orange) */}
-                    <div style={{
-                      width: '56px',
-                      height: '56px',
-                      borderRadius: '16px',
-                      backgroundColor: cat.badgeBg,
-                      border: `2px solid ${cat.badgeBorder}`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      margin: '0 auto 12px auto',
-                      boxShadow: '0 4px 10px rgba(0,0,0,0.06)'
-                    }}>
-                      {cat.icon}
-                    </div>
-
-                    <span style={{
-                      fontSize: '10px',
-                      fontWeight: '700',
-                      textTransform: 'uppercase',
-                      color: cat.accentColor,
-                      backgroundColor: cat.badgeBg,
-                      padding: '2px 8px',
-                      borderRadius: '99px'
-                    }}>
-                      {cat.tag}
-                    </span>
-
-                    <h4 style={{ margin: '8px 0 4px 0', fontSize: '18px', color: '#1A2E22' }}>{cat.name}</h4>
-                    <p style={{ fontSize: '12px', color: '#5A5246', margin: '0 0 12px 0', lineHeight: '1.4' }}>
-                      {cat.desc}
-                    </p>
-                  </div>
-
-                  <div>
-                    <div style={{
-                      padding: '6px 12px',
-                      borderRadius: '8px',
-                      backgroundColor: '#EADFD0',
-                      border: '1px solid #D5C5AE',
-                      display: 'inline-block',
-                      marginBottom: '14px',
-                      fontSize: '15px',
-                      fontWeight: '800',
-                      color: '#1A2E22'
-                    }}>
-                      ₹{cat.price} <span style={{ fontSize: '11px', fontWeight: '500', color: '#5A5246' }}>/ visit</span>
-                    </div>
-
-                    <button
-                      onClick={() => handleBookService(cat.name, `Standard ${cat.name} visit`, null, cat.price)}
-                      className="neu-button"
-                      style={{
-                        width: '100%',
-                        padding: '11px',
-                        borderRadius: '11px',
-                        fontSize: '13px',
-                        fontWeight: '700',
-                        backgroundColor: '#1B3B2B',
-                        borderBottom: `3px solid ${cat.accentColor}`
-                      }}
-                    >
-                      Book {cat.name}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Right Column: Customer's Bookings & Payment */}
-          <div className="neu-card" style={{ padding: '26px', height: 'fit-content', borderTop: '4px solid #2D6A4F' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '9px', fontSize: '18px', color: '#1A2E22' }}>
-                <div style={{
-                  width: '34px',
-                  height: '34px',
-                  borderRadius: '10px',
-                  backgroundColor: '#DCE8E0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <Clock size={18} color="#1B3B2B" />
-                </div>
-                My Service Bookings
-              </h3>
-              <span style={{
-                fontSize: '12px',
-                fontWeight: '800',
-                padding: '4px 11px',
-                borderRadius: '99px',
-                backgroundColor: '#1B3B2B',
-                color: '#F5EFE6'
-              }}>
-                {myBookings.length} Total
-              </span>
-            </div>
-
-            {myBookings.length === 0 ? (
-              <div className="neu-inset" style={{ padding: '24px', textAlign: 'center' }}>
-                <p style={{ fontSize: '13px', color: '#5A5246', margin: 0 }}>
-                  You have no active service requests yet. Try the AI Diagnosis or click a category card!
+        {/* Withdraw Modal */}
+        <AnimatePresence>
+          {withdrawOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(28,25,23,0.58)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 }}
+            >
+              <motion.div
+                initial={{ scale: 0.88, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                className="glass-panel"
+                style={{ width: '100%', maxWidth: '420px', padding: '28px', background: 'rgba(255,252,248,0.96)' }}
+              >
+                <h3 style={{ marginTop: 0, fontSize: '20px', fontWeight: '800' }}>Withdraw from Wallet</h3>
+                <p style={{ fontSize: '12.5px', color: '#57534E', marginTop: 0 }}>
+                  Available Balance: <strong>₹{(profile?.walletBalance ?? 0).toFixed(0)}</strong>
                 </p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {myBookings.map((b) => {
-                  const isPaid = paidJobIds.includes(b.id);
-                  const catColor = getCategoryColor(b.category);
-                  const statusStyle = getStatusStyle(b.status);
+                <form onSubmit={handleWithdrawSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: '700' }}>Amount (₹)</label>
+                    <input type="number" className="glass-input" placeholder="Enter amount" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} min="1" required />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: '700' }}>UPI ID / Bank Account</label>
+                    <input type="text" className="glass-input" placeholder="Enter your UPI ID or account" value={withdrawUpiOrBank} onChange={(e) => setWithdrawUpiOrBank(e.target.value)} required />
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} type="submit" className="dialer-btn" style={{ flex: 1 }}>
+                      <span className="dialer-btn-inner" style={{ width: '100%' }}>Confirm Withdrawal</span>
+                    </motion.button>
+                    <button type="button" onClick={() => setWithdrawOpen(false)} style={{ padding: '10px 16px', borderRadius: '999px', border: '1px solid #D6D3D1', background: '#FFF', fontWeight: '700', cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-                  return (
-                    <div
-                      key={b.id}
-                      className="neu-inset"
-                      style={{
-                        padding: '16px 18px',
-                        borderLeft: `5px solid ${catColor}`
-                      }}
-                    >
+        {/* Fallback Checkout Modal if VITE_RAZORPAY_KEY is not set */}
+        <AnimatePresence>
+          {fallbackCheckout && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(28,25,23,0.58)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 }}
+            >
+              <motion.div
+                initial={{ scale: 0.88, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                className="glass-panel"
+                style={{ width: '100%', maxWidth: '430px', padding: '28px', background: 'rgba(255,252,248,0.97)' }}
+              >
+                <div style={{ fontSize: '11px', fontWeight: '800', color: '#EA580C' }}>ESCROW CHECKOUT</div>
+                <h3 style={{ margin: '6px 0', fontSize: '24px', fontWeight: '800' }}>Pay ₹{fallbackCheckout.amount}</h3>
+                <p style={{ fontSize: '13px', color: '#44403C' }}>
+                  Specialist: <strong>{fallbackCheckout.providerObj.fullName}</strong> • Doorstep: <strong>{profile?.address || 'Not set'}</strong>
+                </p>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.97 }}
+                    type="button"
+                    onClick={async () => {
+                      const { providerObj, desc, amount } = fallbackCheckout;
+                      await finalizeBooking(providerObj, desc, amount, 'RAZORPAY_UPI', 'rzp_escrow_verified');
+                      setBanner(`Paid ₹${amount}! Track your booking below.`);
+                    }}
+                    className="dialer-btn"
+                    style={{ flex: 1 }}
+                  >
+                    <span className="dialer-btn-inner" style={{ width: '100%' }}>Confirm Payment (₹{fallbackCheckout.amount})</span>
+                  </motion.button>
+                  <button type="button" onClick={() => setFallbackCheckout(null)} style={{ padding: '10px 16px', borderRadius: '999px', border: '1px solid #D6D3D1', background: '#FFF', fontWeight: '700', cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* SECTION 1: MANAGE PROFILE */}
+        {section === 'PROFILE' && profile ? (
+          <DropletReveal>
+            <div className="glass-panel" style={{ maxWidth: '640px', margin: '0 auto', padding: '32px' }}>
+              <h2 style={{ marginTop: 0, fontSize: '22px', fontWeight: '800' }}>
+                {userRole === 'PROVIDER' ? 'Manage Specialist Profile' : 'Manage Profile & Doorstep Address'}
+              </h2>
+              <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '700' }}>Full Name</label>
+                  <input className="glass-input" value={profile.fullName || ''} onChange={(e) => setProfile({ ...profile, fullName: e.target.value })} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: '700' }}>Email Address</label>
+                    <input className="glass-input" value={profile.email || ''} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: '700' }}>City / Zone</label>
+                    <input className="glass-input" value={profile.city || ''} onChange={(e) => setProfile({ ...profile, city: e.target.value })} />
+                  </div>
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '700' }}>Doorstep Address</label>
+                  <input className="glass-input" value={profile.address || ''} onChange={(e) => setProfile({ ...profile, address: e.target.value })} />
+                </div>
+                {userRole === 'PROVIDER' && (
+                  <>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: '700' }}>Trade Specialty</label>
+                      <select className="glass-input" value={profile.category || ''} onChange={(e) => setProfile({ ...profile, category: e.target.value })}>
+                        <option value="Plumber">Plumber</option>
+                        <option value="Electrician">Electrician</option>
+                        <option value="Carpenter">Carpenter</option>
+                        <option value="AC & Appliance">AC & Appliance</option>
+                        <option value="Cleaning">Cleaning</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: '700' }}>Professional Bio</label>
+                      <input className="glass-input" value={profile.bio || ''} onChange={(e) => setProfile({ ...profile, bio: e.target.value })} />
+                    </div>
+                  </>
+                )}
+                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} type="submit" className="dialer-btn" style={{ marginTop: '8px' }}>
+                  <span className="dialer-btn-inner" style={{ width: '100%' }}>Save Changes</span>
+                </motion.button>
+              </form>
+            </div>
+          </DropletReveal>
+        ) : section === 'BOOKINGS' && userRole === 'CUSTOMER' ? (
+          /* SECTION 2: TRACK ACTIVE BOOKINGS FOR CUSTOMER */
+          <DropletReveal>
+            <div className="glass-panel" style={{ padding: '28px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '22px', fontWeight: '800' }}>Track My Bookings & Escrow ({bookings.length})</h2>
+                  <span style={{ fontSize: '12.5px', color: '#57534E' }}>Live status fetched from database</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSection('HOME')}
+                  style={{ padding: '9px 16px', borderRadius: '999px', border: '1px solid rgba(28,25,23,0.16)', background: '#FFF', fontWeight: '700', cursor: 'pointer', fontSize: '12.5px' }}
+                >
+                  ← Back to Services
+                </button>
+              </div>
+              {bookings.length === 0 ? (
+                <p style={{ fontSize: '13.5px', color: '#57534E' }}>No bookings found in database for {userPhone}.</p>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
+                  {bookings.map((b) => (
+                    <div key={b.id} style={{ padding: '18px', borderRadius: '18px', background: 'rgba(255,255,255,0.85)', border: '1px solid rgba(28,25,23,0.08)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <strong style={{ fontSize: '15px', color: '#1A2E22' }}>
-                          #{b.id} • {b.category}
-                        </strong>
+                        <strong>#{b.id} • {b.providerName}</strong>
                         <span style={{
-                          fontSize: '11px',
-                          fontWeight: '800',
-                          padding: '4px 10px',
-                          borderRadius: '99px',
-                          backgroundColor: statusStyle.bg,
-                          color: statusStyle.text,
-                          border: `1px solid ${statusStyle.border}`
+                          fontSize: '11px', fontWeight: '800', padding: '3px 10px', borderRadius: '99px',
+                          background: b.status === 'DECLINED' ? '#FEE2E2' : b.status === 'ACCEPTED' ? '#FFEDD5' : b.status === 'COMPLETED' ? '#DCFCE7' : '#FEF3C7',
+                          color: b.status === 'DECLINED' ? '#991B1B' : b.status === 'ACCEPTED' ? '#9A3412' : b.status === 'COMPLETED' ? '#166534' : '#92400E'
                         }}>
                           {b.status}
                         </span>
                       </div>
-
-                      <p style={{ margin: '8px 0', fontSize: '13px', color: '#3D372E', fontWeight: '500' }}>
-                        {b.problemDescription}
-                      </p>
-
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginTop: '10px',
-                        paddingTop: '8px',
-                        borderTop: '1px solid #D5C5AE',
-                        fontSize: '12px',
-                        color: '#5A5246'
-                      }}>
-                        <span>Technician: <strong style={{ color: '#1A2E22' }}>{b.providerName || 'Assigning...'}</strong></span>
-                        <span>Fee: <strong style={{ color: '#1A2E22', fontSize: '14px' }}>₹{b.price || 499}</strong></span>
-                      </div>
-
-                      <div style={{ marginTop: '12px' }}>
-                        {isPaid ? (
-                          <div style={{
-                            fontSize: '12px',
-                            fontWeight: '700',
-                            color: '#065F46',
-                            backgroundColor: '#D1FAE5',
-                            border: '1px solid #6EE7B7',
-                            padding: '7px 12px',
-                            borderRadius: '8px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '6px'
-                          }}>
-                            <ShieldCheck size={15} color="#059669" /> Paid via Razorpay
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => handlePayNow(b)}
-                            className="neu-button"
-                            style={{
-                              width: '100%',
-                              padding: '9px 12px',
-                              borderRadius: '9px',
-                              fontSize: '12px',
-                              fontWeight: '700',
-                              background: 'linear-gradient(135deg, #1B3B2B, #2D5A43)',
-                              display: 'flex',
-                              justifyContent: 'center',
-                              alignItems: 'center',
-                              gap: '6px'
-                            }}
-                          >
-                            <CreditCard size={14} /> Pay ₹{b.price || 499} via Razorpay
-                          </button>
-                        )}
+                      <p style={{ margin: '8px 0', fontSize: '13px', color: '#1C1917' }}>{b.problemDescription}</p>
+                      <div style={{ fontSize: '12px', color: '#57534E', fontWeight: '700' }}>
+                        ₹{b.price} • {b.paymentMethod} • {b.paymentStatus}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        /* ================= PROVIDER & ADMIN VIEW ================= */
-        <div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '28px' }}>
-            <div className="neu-card" style={{ padding: '20px', textAlign: 'center', borderTop: '4px solid #1B3B2B' }}>
-              <span style={{ fontSize: '12px', fontWeight: '700', color: '#5A5246' }}>TOTAL REQUESTS</span>
-              <h2 style={{ margin: '8px 0 0 0', fontSize: '30px', color: '#1B3B2B' }}>{adminStats.totalRequests}</h2>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="neu-card" style={{ padding: '20px', textAlign: 'center', borderTop: '4px solid #D97706' }}>
-              <span style={{ fontSize: '12px', fontWeight: '700', color: '#5A5246' }}>PENDING JOBS</span>
-              <h2 style={{ margin: '8px 0 0 0', fontSize: '30px', color: '#D97706' }}>{adminStats.pendingJobs}</h2>
-            </div>
-            <div className="neu-card" style={{ padding: '20px', textAlign: 'center', borderTop: '4px solid #0284C7' }}>
-              <span style={{ fontSize: '12px', fontWeight: '700', color: '#5A5246' }}>ACCEPTED JOBS</span>
-              <h2 style={{ margin: '8px 0 0 0', fontSize: '30px', color: '#0284C7' }}>{adminStats.acceptedJobs}</h2>
-            </div>
-            <div className="neu-card" style={{ padding: '20px', textAlign: 'center', borderTop: '4px solid #059669' }}>
-              <span style={{ fontSize: '12px', fontWeight: '700', color: '#5A5246' }}>COMPLETED JOBS</span>
-              <h2 style={{ margin: '8px 0 0 0', fontSize: '30px', color: '#059669' }}>{adminStats.completedJobs}</h2>
-            </div>
-          </div>
+          </DropletReveal>
+        ) : userRole === 'CUSTOMER' ? (
+          /* SECTION 3: DATABASE-DRIVEN CUSTOMER STOREFRONT */
+          <div>
+            {/* A. Hero + Search + AI Symptom Diagnosis */}
+            <DropletReveal>
+              <div style={{
+                borderRadius: '26px',
+                background: 'linear-gradient(125deg, #1C1917 0%, #292524 58%, #9A3412 100%)',
+                border: '1px solid rgba(251,146,60,0.35)',
+                padding: '32px 36px',
+                color: '#FAFAF9',
+                marginBottom: '26px',
+                boxShadow: '0 20px 46px rgba(28,25,23,0.2)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '12px' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 12px', borderRadius: '99px', background: 'rgba(249,115,22,0.22)', color: '#FDBA74', fontSize: '12px', fontWeight: '700' }}>
+                    <Sparkles size={14} /> Doorstep: {profile?.address || 'Update your address in Manage Profile'}
+                  </span>
 
-          <div className="neu-card" style={{ padding: '26px', borderTop: '4px solid #2D6A4F' }}>
-            <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px', color: '#1A2E22' }}>
-              <UserCheck size={20} color="#1B3B2B" /> Service Provider Dispatch & Job Queue
-            </h3>
-            <p style={{ fontSize: '13px', color: '#5A5246', marginBottom: '18px' }}>
-              Accept pending customer requests to auto-assign the top technician from MySQL, or mark ongoing jobs as Completed.
-            </p>
-
-            {allBookings.length === 0 ? (
-              <p style={{ fontSize: '13px', color: '#5A5246' }}>No jobs in the system yet.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {allBookings.map((job) => {
-                  const catColor = getCategoryColor(job.category);
-                  const statusStyle = getStatusStyle(job.status);
-
-                  return (
-                    <div
-                      key={job.id}
-                      className="neu-inset"
+                  <div style={{ display: 'flex', gap: '6px', background: 'rgba(255,255,255,0.12)', padding: '4px', borderRadius: '999px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMode('RAZORPAY_UPI')}
+                      className="role-tab"
                       style={{
-                        padding: '16px 20px',
-                        borderLeft: `5px solid ${catColor}`,
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
+                        padding: '7px 14px',
+                        fontSize: '12px',
+                        background: paymentMode === 'RAZORPAY_UPI' ? '#EA580C' : 'transparent',
+                        color: '#FFF'
                       }}
                     >
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <strong style={{ color: '#1A2E22' }}>Job #{job.id} • {job.category}</strong>
-                          <span style={{ fontSize: '12px', color: '#5A5246' }}>(Customer: {job.customerPhone})</span>
-                          <span style={{
-                            fontSize: '11px',
-                            fontWeight: '800',
-                            padding: '3px 9px',
-                            borderRadius: '99px',
-                            backgroundColor: statusStyle.bg,
-                            color: statusStyle.text,
-                            border: `1px solid ${statusStyle.border}`
-                          }}>
-                            {job.status}
-                          </span>
-                        </div>
-                        <p style={{ margin: '6px 0', fontSize: '13px', color: '#3D372E', fontWeight: '500' }}>
-                          {job.problemDescription}
-                        </p>
-                        <span style={{ fontSize: '12px', color: '#5A5246' }}>
-                          Assigned Provider: <strong style={{ color: '#1A2E22' }}>{job.providerName || 'Unassigned'}</strong> • Fee: <strong>₹{job.price || 499}</strong>
-                        </span>
-                      </div>
+                      <CreditCard size={13} /> Razorpay UPI/Card
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMode('COD')}
+                      className="role-tab"
+                      style={{
+                        padding: '7px 14px',
+                        fontSize: '12px',
+                        background: paymentMode === 'COD' ? '#EA580C' : 'transparent',
+                        color: '#FFF'
+                      }}
+                    >
+                      <Banknote size={13} /> Cash on Delivery
+                    </button>
+                  </div>
+                </div>
 
-                      <div style={{ display: 'flex', gap: '10px' }}>
-                        {job.status === 'PENDING' && (
-                          <button
-                            onClick={() => handleStatusChange(job.id, 'ACCEPTED')}
-                            className="neu-button"
-                            style={{
-                              padding: '10px 16px',
-                              borderRadius: '10px',
-                              fontSize: '13px',
-                              fontWeight: '700',
-                              background: 'linear-gradient(135deg, #0284C7, #0369A1)'
-                            }}
-                          >
-                            Accept & Auto-Assign
-                          </button>
-                        )}
-                        {job.status === 'ACCEPTED' && (
-                          <button
-                            onClick={() => handleStatusChange(job.id, 'COMPLETED')}
-                            className="neu-button"
-                            style={{
-                              padding: '10px 16px',
-                              borderRadius: '10px',
-                              fontSize: '13px',
-                              fontWeight: '700',
-                              background: 'linear-gradient(135deg, #1B3B2B, #2D5A43)'
-                            }}
-                          >
-                            Mark Completed
-                          </button>
-                        )}
-                      </div>
+                <h1 style={{ margin: '0 0 12px 0', fontSize: '34px', fontWeight: '800' }}>
+                  Hi {profile?.fullName || userPhone}, <span className="serif-italic" style={{ fontSize: '40px', fontWeight: '400', color: '#FB923C' }}>elevate</span> your everyday living.
+                </h1>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '12px', marginTop: '16px' }}>
+                  <form onSubmit={handleAiDiagnose} style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.96)', padding: '5px', borderRadius: '999px' }}>
+                    <input
+                      type="text"
+                      placeholder="Describe issue for AI Diagnosis..."
+                      value={problemDescription}
+                      onChange={(e) => setProblemDescription(e.target.value)}
+                      style={{ flex: 1, border: 'none', background: 'transparent', padding: '9px 16px', fontSize: '13.5px', outline: 'none', color: '#1C1917' }}
+                    />
+                    <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.96 }} type="submit" className="dialer-btn" disabled={loadingAi}>
+                      <span className="dialer-btn-inner" style={{ padding: '9px 18px', fontSize: '12.5px' }}>{loadingAi ? 'Diagnosing...' : 'AI Diagnose'}</span>
+                    </motion.button>
+                  </form>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.92)', padding: '5px 16px', borderRadius: '999px' }}>
+                    <Search size={16} color="#78716C" />
+                    <input
+                      type="text"
+                      placeholder="Search specialists or trades..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      style={{ flex: 1, border: 'none', background: 'transparent', padding: '9px 4px', fontSize: '13.5px', outline: 'none', color: '#1C1917' }}
+                    />
+                  </div>
+                </div>
+
+                {recommendation && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    style={{ marginTop: '16px', background: 'rgba(28,25,23,0.92)', padding: '16px 20px', borderRadius: '18px', border: '1px solid #FB923C', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}
+                  >
+                    <div>
+                      <span style={{ fontSize: '11px', fontWeight: '800', background: '#F97316', color: '#FFF', padding: '3px 8px', borderRadius: '6px' }}>
+                        AI MATCH: {recommendation.category} ({recommendation.confidence}) • {recommendation.urgency}
+                      </span>
+                      <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: '#FED7AA' }}>{recommendation.matchReason}</p>
                     </div>
+                    <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} onClick={() => handleBookService(null, problemDescription, recommendation.estimatedPrice)} className="dialer-btn">
+                      <span className="dialer-btn-inner">Book Now (₹{recommendation.estimatedPrice})</span>
+                    </motion.button>
+                  </motion.div>
+                )}
+              </div>
+            </DropletReveal>
+
+            {/* B. Category Filter Tiles */}
+            <DropletReveal delay={0.05}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <h2 style={{ margin: 0, fontSize: '21px', fontWeight: '800' }}>Explore Home Services</h2>
+                {selectedCategoryFilter !== 'ALL' && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategoryFilter('ALL')}
+                    style={{ background: 'none', border: 'none', color: '#EA580C', fontWeight: '800', fontSize: '13px', cursor: 'pointer' }}
+                  >
+                    Show All Categories
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: '14px', marginBottom: '28px' }}>
+                {CATEGORY_TILES.map((cat) => {
+                  const IconComp = cat.icon;
+                  const active = selectedCategoryFilter === cat.id;
+                  return (
+                    <motion.div
+                      key={cat.id}
+                      whileHover={{ y: -5, scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setSelectedCategoryFilter(active ? 'ALL' : cat.id)}
+                      className="glass-panel"
+                      style={{
+                        padding: '18px 16px',
+                        cursor: 'pointer',
+                        border: active ? '2px solid #EA580C' : '1px solid rgba(255,255,255,0.85)',
+                        background: active ? 'rgba(255,247,237,0.92)' : 'rgba(255,253,250,0.74)'
+                      }}
+                    >
+                      <div style={{ width: '42px', height: '42px', borderRadius: '13px', background: 'rgba(249,115,22,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                        <IconComp size={21} color={cat.color} />
+                      </div>
+                      <div style={{ fontSize: '14px', fontWeight: '800', color: '#1C1917' }}>{cat.title}</div>
+                    </motion.div>
                   );
                 })}
               </div>
+            </DropletReveal>
+
+            {/* C. Database-Fetched Service Packages (From MySQL `service_packages`) */}
+            {packagesList.length > 0 && (
+              <DropletReveal delay={0.08}>
+                <h2 style={{ margin: '0 0 14px 0', fontSize: '21px', fontWeight: '800' }}>Service Packages</h2>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '16px', marginBottom: '32px' }}>
+                  {packagesList
+                    .filter(pkg => selectedCategoryFilter === 'ALL' || pkg.category?.toLowerCase().includes(selectedCategoryFilter.toLowerCase()))
+                    .map((pkg) => (
+                      <motion.div
+                        key={pkg.id}
+                        whileHover={{ y: -5 }}
+                        className="glass-panel"
+                        style={{ padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+                      >
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            {pkg.badge && (
+                              <span style={{ fontSize: '10px', fontWeight: '800', padding: '3px 8px', borderRadius: '6px', background: 'rgba(249,115,22,0.15)', color: '#C2410C' }}>
+                                {pkg.badge}
+                              </span>
+                            )}
+                            {pkg.duration && (
+                              <span style={{ fontSize: '11.5px', fontWeight: '700', color: '#57534E', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <Clock size={12} /> {pkg.duration}
+                              </span>
+                            )}
+                          </div>
+                          <h4 style={{ margin: '4px 0 6px 0', fontSize: '16px', fontWeight: '800', color: '#1C1917' }}>{pkg.title}</h4>
+                          {pkg.rating && <div style={{ fontSize: '12px', color: '#EA580C', fontWeight: '700', marginBottom: '12px' }}>★ {pkg.rating}</div>}
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid rgba(28,25,23,0.08)' }}>
+                          <div>
+                            <span style={{ fontSize: '17px', fontWeight: '800', color: '#1C1917' }}>₹{pkg.price}</span>{' '}
+                            {pkg.oldPrice && <span style={{ fontSize: '12px', textDecoration: 'line-through', color: '#78716C' }}>₹{pkg.oldPrice}</span>}
+                          </div>
+                          <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} type="button" onClick={() => handleBookPackage(pkg)} className="dialer-btn">
+                            <span className="dialer-btn-inner" style={{ padding: '8px 16px', fontSize: '12px' }}>Book</span>
+                          </motion.button>
+                        </div>
+                      </motion.div>
+                    ))}
+                </div>
+              </DropletReveal>
             )}
+
+            {/* D. Verified Specialists (Fetched from MySQL `users` table) + Live Reviews (Fetched from MySQL `reviews` table) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1.35fr 0.95fr', gap: '26px' }}>
+              <DropletReveal delay={0.12}>
+                <h2 style={{ margin: '0 0 14px 0', fontSize: '21px', fontWeight: '800' }}>
+                  Verified Specialists ({filteredProviders.length})
+                </h2>
+                {filteredProviders.length === 0 ? (
+                  <div className="glass-panel" style={{ padding: '24px', color: '#57534E', fontSize: '13.5px' }}>
+                    No specialists found in the database for this filter. Register a Service Provider account to see them listed here automatically.
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
+                    {filteredProviders.map((prov) => {
+                      const isPlumber = prov.category === 'Plumber';
+                      const isElec = prov.category === 'Electrician';
+                      const fee = prov.hourlyRate || 399;
+                      return (
+                        <motion.div
+                          key={prov.id}
+                          whileHover={{ y: -5 }}
+                          className="glass-panel"
+                          style={{ padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+                        >
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ width: '42px', height: '42px', borderRadius: '13px', background: 'rgba(249,115,22,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {isPlumber ? <Wrench size={20} color="#EA580C" /> : isElec ? <Zap size={20} color="#D97706" /> : <Hammer size={20} color="#C2410C" />}
+                              </div>
+                              <span style={{ fontSize: '17px', fontWeight: '800', color: '#EA580C' }}>₹{fee}</span>
+                            </div>
+                            <h4 style={{ margin: '12px 0 4px 0', fontSize: '17px', fontWeight: '800' }}>{prov.fullName}</h4>
+                            <span style={{ fontSize: '11px', fontWeight: '800', padding: '3px 9px', borderRadius: '99px', background: 'rgba(28,25,23,0.07)' }}>
+                              {prov.category} • ★ {prov.rating ?? 5.0} ({prov.completedJobs ?? 0} jobs)
+                            </span>
+                            <p style={{ fontSize: '12px', color: '#57534E', margin: '10px 0 14px 0' }}>{prov.bio || ''}</p>
+                          </div>
+                          <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.96 }} type="button" onClick={() => handleBookService(prov, null, fee)} className="dialer-btn" style={{ width: '100%' }}>
+                            <span className="dialer-btn-inner" style={{ width: '100%', padding: '9px 14px', fontSize: '12px' }}>
+                              {paymentMode === 'COD' ? `Book (${prov.fullName.split(' ')[0]}) • COD` : `Pay ₹${fee} via Razorpay`}
+                            </span>
+                          </motion.button>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                )}
+              </DropletReveal>
+
+              <DropletReveal delay={0.16}>
+                <div className="glass-panel" style={{ padding: '22px' }}>
+                  <h3 style={{ margin: '0 0 12px 0', fontSize: '18px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Star size={18} color="#F97316" fill="#F97316" /> Customer Reviews ({reviews.length})
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '230px', overflowY: 'auto', marginBottom: '16px' }}>
+                    {reviews.length === 0 ? (
+                      <p style={{ fontSize: '12.5px', color: '#57534E' }}>No reviews in database yet. Be the first to post one below!</p>
+                    ) : (
+                      reviews.map((rev, idx) => (
+                        <div key={rev.id || idx} style={{ padding: '12px', borderRadius: '12px', background: 'rgba(255,255,255,0.78)', fontSize: '12.5px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '800' }}>
+                            <span>{rev.customerName} ({rev.serviceCategory})</span>
+                            <span style={{ color: '#EA580C' }}>{'★'.repeat(rev.rating || 5)}</span>
+                          </div>
+                          <p style={{ margin: '4px 0 0 0', color: '#44403C' }}>{rev.comment}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <form onSubmit={handlePostReview} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <select className="glass-input" style={{ padding: '8px 12px', fontSize: '12px' }} value={reviewForm.serviceCategory} onChange={(e) => setReviewForm({ ...reviewForm, serviceCategory: e.target.value })} required>
+                        <option value="">Select Category</option>
+                        <option value="Plumber">Plumber</option>
+                        <option value="Electrician">Electrician</option>
+                        <option value="Carpenter">Carpenter</option>
+                        <option value="AC & Appliance">AC & Appliance</option>
+                        <option value="Cleaning">Cleaning</option>
+                      </select>
+                      <select className="glass-input" style={{ padding: '8px 12px', fontSize: '12px' }} value={reviewForm.rating} onChange={(e) => setReviewForm({ ...reviewForm, rating: e.target.value })}>
+                        <option value="5">★★★★★ (5.0)</option>
+                        <option value="4">★★★★☆ (4.0)</option>
+                        <option value="3">★★★☆☆ (3.0)</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input className="glass-input" style={{ padding: '8px 14px', fontSize: '12px' }} placeholder="Write a review..." value={reviewForm.comment} onChange={(e) => setReviewForm({ ...reviewForm, comment: e.target.value })} required />
+                      <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} type="submit" className="dialer-btn">
+                        <span className="dialer-btn-inner" style={{ padding: '8px 14px', fontSize: '12px' }}>Post</span>
+                      </motion.button>
+                    </div>
+                  </form>
+                </div>
+              </DropletReveal>
+            </div>
           </div>
-        </div>
-      )}
+        ) : (
+          /* SECTION 4: SERVICE PROVIDER PORTAL (100% DB-DRIVEN) */
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '18px', marginBottom: '26px' }}>
+              <div className="dark-glass-panel" style={{ padding: '22px' }}>
+                <span style={{ fontSize: '11px', color: '#FDBA74', fontWeight: '800' }}>PROVIDER WALLET BALANCE</span>
+                <h2 style={{ margin: '8px 0 0 0', fontSize: '30px', color: '#FB923C' }}>₹{(profile?.walletBalance ?? 0).toFixed(0)}</h2>
+              </div>
+              <div className="glass-panel" style={{ padding: '22px', borderTop: '4px solid #F59E0B' }}>
+                <span style={{ fontSize: '11px', color: '#57534E', fontWeight: '800' }}>PENDING REQUESTS</span>
+                <h2 style={{ margin: '8px 0 0 0', fontSize: '30px', color: '#D97706' }}>{pendingCount}</h2>
+              </div>
+              <div className="glass-panel" style={{ padding: '22px', borderTop: '4px solid #EA580C' }}>
+                <span style={{ fontSize: '11px', color: '#57534E', fontWeight: '800' }}>ACTIVE ACCEPTED JOBS</span>
+                <h2 style={{ margin: '8px 0 0 0', fontSize: '30px', color: '#EA580C' }}>{activeCount}</h2>
+              </div>
+              <div className="glass-panel" style={{ padding: '22px', borderTop: '4px solid #16A34A' }}>
+                <span style={{ fontSize: '11px', color: '#57534E', fontWeight: '800' }}>COMPLETED WORKS</span>
+                <h2 style={{ margin: '8px 0 0 0', fontSize: '30px', color: '#15803D' }}>{completedCount}</h2>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1.35fr 0.95fr', gap: '26px' }}>
+              <div className="glass-panel" style={{ padding: '26px' }}>
+                <h3 style={{ marginTop: 0, fontSize: '19px', fontWeight: '800' }}>
+                  Customer Dispatch Queue for {profile?.fullName || userPhone} ({bookings.length})
+                </h3>
+                {bookings.length === 0 ? (
+                  <p style={{ fontSize: '13px', color: '#57534E' }}>No bookings assigned to {userPhone} in database yet.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {bookings.map((job) => (
+                      <div key={job.id} style={{ padding: '18px', borderRadius: '18px', background: 'rgba(255,255,255,0.84)', border: '1px solid rgba(28,25,23,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                        <div>
+                          <strong>Booking #{job.id} • {job.customerName || job.customerPhone}</strong>{' '}
+                          <span style={{ fontSize: '11px', fontWeight: '800', padding: '3px 9px', borderRadius: '99px', background: '#FFEDD5', color: '#9A3412' }}>{job.status}</span>
+                          <p style={{ margin: '6px 0', fontSize: '13px' }}>{job.problemDescription}</p>
+                          <div style={{ fontSize: '12px', color: '#C2410C', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <MapPin size={14} color="#EA580C" />
+                            Doorstep: {job.customerAddress || 'Address not provided'} {job.customerCity ? `(${job.customerCity})` : ''} • Phone: {job.customerPhone}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          {job.status === 'PENDING' && (
+                            <>
+                              <button onClick={() => handleProviderAction(job.id, 'ACCEPT')} className="dialer-btn">
+                                <span className="dialer-btn-inner" style={{ padding: '9px 14px', fontSize: '12px' }}><Check size={14} /> Accept (+₹{job.price})</span>
+                              </button>
+                              <button onClick={() => handleProviderAction(job.id, 'DECLINE')} style={{ padding: '10px 14px', borderRadius: '999px', border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#991B1B', fontWeight: '800', fontSize: '12px', cursor: 'pointer' }}>
+                                <XCircle size={14} /> Decline
+                              </button>
+                            </>
+                          )}
+                          {job.status === 'ACCEPTED' && (
+                            <button onClick={() => handleProviderAction(job.id, 'COMPLETE')} className="dialer-btn">
+                              <span className="dialer-btn-inner" style={{ padding: '9px 16px', fontSize: '12px' }}>Mark Work Completed</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="glass-panel" style={{ padding: '24px' }}>
+                <h4 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <BarChart3 size={18} color="#EA580C" /> Work & Earnings Breakdown
+                </h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', alignItems: 'end', height: '140px', padding: '12px', background: 'rgba(255,255,255,0.68)', borderRadius: '16px' }}>
+                  {[
+                    { label: 'Pending', count: pendingCount, color: '#F59E0B' },
+                    { label: 'Active', count: activeCount, color: '#EA580C' },
+                    { label: 'Done', count: completedCount, color: '#16A34A' },
+                    { label: 'Declined', count: declinedCount, color: '#EF4444' }
+                  ].map((bar) => (
+                    <div key={bar.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
+                      <span style={{ fontSize: '12px', fontWeight: '800', marginBottom: '4px' }}>{bar.count}</span>
+                      <div style={{ width: '100%', height: `${Math.max(14, (bar.count / maxBar) * 85)}%`, background: bar.color, borderRadius: '8px 8px 4px 4px' }} />
+                      <span style={{ fontSize: '11px', fontWeight: '700', color: '#57534E', marginTop: '6px' }}>{bar.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <FixoraFooter onSelectCategory={(cat) => { setSection('HOME'); setSelectedCategoryFilter(cat); }} />
+      </motion.div>
     </div>
   );
 }

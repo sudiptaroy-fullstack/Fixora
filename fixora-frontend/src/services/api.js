@@ -1,29 +1,29 @@
 import axios from 'axios';
 
 const API = axios.create({
-    baseURL: 'http://localhost:8081/api',
-    headers: {
-        'Content-Type': 'application/json',
-    }
+  baseURL: 'http://localhost:8081/api'
 });
 
-// 1. Auth Endpoints
-export const sendOtp = (phoneNumber) => API.post(`/auth/send-otp?phoneNumber=${phoneNumber}`);
-export const verifyOtp = (phoneNumber, otp) => API.post(`/auth/verify-otp?phoneNumber=${phoneNumber}&otp=${otp}`);
+export const registerUser = (payload) => API.post('/auth/register', payload);
+export const sendOtp = (phone, role) => API.post(`/auth/send-otp?phone=${phone}&role=${role}`);
+export const verifyOtp = (phone, otp) => API.post(`/auth/verify-otp?phone=${phone}&otp=${otp}`);
 
-// 2. Service Request & AI Endpoints
-export const createServiceRequest = (requestData) => API.post('/requests/create', requestData);
-export const getAllRequests = () => API.get('/requests/list');
+export const getAiRecommendation = (problemDescription) => API.post('/ai/recommend', { problemDescription });
+export const getServicePackages = () => API.get('/catalog/packages');
+
+export const createServiceRequest = (payload) => API.post('/requests', payload);
 export const getCustomerRequests = (phone) => API.get(`/requests/customer/${phone}`);
-export const updateRequestStatus = (id, status) => API.put(`/requests/${id}/status?status=${status}`);
-export const getAiRecommendation = (problemDescription) => API.post('/requests/ai-recommend', { problemDescription });
-export const getAdminStats = () => API.get('/requests/admin/stats');
+export const getProviderRequests = (phone) => API.get(`/requests/provider/${phone}`);
+export const getAllRequests = () => API.get('/requests');
+export const respondToRequest = (id, action) => API.put(`/requests/${id}/respond?action=${action}`);
 
-// 3. Service Provider Endpoints
-export const getAllProviders = () => API.get('/providers/list');
+export const getUserProfile = (phone, role = 'CUSTOMER') => API.get(`/users/profile/${phone}?role=${role}`);
+export const updateUserProfile = (phone, payload) => API.put(`/users/profile/${phone}`, payload);
+export const getAllMarketplaceProviders = () => API.get('/users/providers');
+export const withdrawWallet = (phone, amount) => API.post(`/users/wallet/${phone}/withdraw?amount=${amount}`);
 
-// 4. Payment Endpoints
-export const createPaymentOrder = (orderData) => API.post('/payment/create-order', orderData);
-export const verifyPaymentOrder = (paymentData) => API.post('/payment/verify', paymentData);
+export const getAllReviews = () => API.get('/reviews');
+export const addReview = (payload) => API.post('/reviews', payload);
+export const getAdminStats = () => API.get('/admin/stats');
 
 export default API;
