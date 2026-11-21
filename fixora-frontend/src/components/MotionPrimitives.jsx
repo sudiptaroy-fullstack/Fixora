@@ -1,17 +1,86 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Wrench, Hammer, Cog, Settings, Nut, Sparkles } from 'lucide-react';
+import { Wrench, Hammer, Cog, Settings, Sparkles } from 'lucide-react';
+
+// Custom crisp Screwdriver SVG matching Lucide stroke style
+function ScrewdriverIcon({ size = 64, strokeWidth = 1.4 }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a2 2 0 0 0 0-2.83l-.7-.7a2 2 0 0 0-2.83 0Z" />
+      <path d="m14 8-7.5 7.5" />
+      <path d="m5 14 5 5" />
+      <path d="m2 22 4.5-1.5L9 18l-3-3-2.5 2.5Z" />
+    </svg>
+  );
+}
 
 const MECHANICAL_ELEMENTS = [
-  { id: 1, Icon: Cog, size: 110, top: '8%', left: '4%', duration: 28, dir: 1, driftY: 22, opacity: 0.08 },
-  { id: 2, Icon: Settings, size: 84, top: '16%', left: '11%', duration: 22, dir: -1, driftY: -18, opacity: 0.07 },
-  { id: 3, Icon: Wrench, size: 68, top: '14%', right: '7%', duration: 14, dir: 1, driftY: 26, opacity: 0.085 },
-  { id: 4, Icon: Cog, size: 130, top: '44%', right: '3%', duration: 34, dir: -1, driftY: -24, opacity: 0.075 },
-  { id: 5, Icon: Hammer, size: 62, top: '52%', left: '6%', duration: 16, dir: 1, driftY: 20, opacity: 0.08 },
-  { id: 6, Icon: Nut, size: 54, top: '72%', left: '14%', duration: 19, dir: -1, driftY: -22, opacity: 0.075 },
-  { id: 7, Icon: Wrench, size: 76, top: '76%', right: '11%', duration: 17, dir: 1, driftY: 24, opacity: 0.08 },
-  { id: 8, Icon: Cog, size: 96, top: '82%', left: '46%', duration: 30, dir: 1, driftY: -16, opacity: 0.065 }
+  { id: 1, Icon: Cog, size: 112, top: '8%', left: '3%', duration: 28, dir: 1, driftY: 22 },
+  { id: 2, Icon: Wrench, size: 74, top: '14%', left: '13%', duration: 15, dir: -1, driftY: -18 },
+  { id: 3, Icon: ScrewdriverIcon, size: 72, top: '12%', right: '6%', duration: 16, dir: 1, driftY: 24 },
+  { id: 4, Icon: Cog, size: 132, top: '42%', right: '2%', duration: 34, dir: -1, driftY: -24 },
+  { id: 5, Icon: Hammer, size: 70, top: '48%', left: '4%', duration: 16, dir: 1, driftY: 20 },
+  { id: 6, Icon: ScrewdriverIcon, size: 68, top: '74%', left: '11%', duration: 18, dir: -1, driftY: -22 },
+  { id: 7, Icon: Wrench, size: 80, top: '76%', right: '9%', duration: 17, dir: 1, driftY: 24 },
+  { id: 8, Icon: Hammer, size: 66, top: '84%', left: '46%', duration: 19, dir: 1, driftY: -16 },
+  { id: 9, Icon: Settings, size: 88, top: '28%', right: '14%', duration: 24, dir: -1, driftY: 18 }
 ];
+
+function InteractiveToolItem({ item }) {
+  const [spinCount, setSpinCount] = useState(0);
+  const [hovered, setHovered] = useState(false);
+  const ToolIcon = item.Icon;
+
+  return (
+    <motion.div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={() => setSpinCount((prev) => prev + 1)}
+      animate={{
+        y: [0, item.driftY, 0],
+        rotate: spinCount * 360 + (hovered ? 18 : 0),
+        scale: hovered ? 1.28 : 1
+      }}
+      whileTap={{ scale: 0.85, rotate: spinCount * 360 - 25 }}
+      transition={{
+        y: { duration: item.duration * 0.45, repeat: Infinity, ease: 'easeInOut' },
+        rotate: { type: 'spring', stiffness: 260, damping: 16 },
+        scale: { type: 'spring', stiffness: 320, damping: 18 }
+      }}
+      title="Click or hover tool"
+      style={{
+        position: 'absolute',
+        top: item.top,
+        left: item.left,
+        right: item.right,
+        pointerEvents: 'auto',
+        cursor: 'pointer',
+        padding: '10px',
+        borderRadius: '50%',
+        color: hovered ? '#EA580C' : '#9A3412',
+        opacity: hovered ? 0.42 : 0.11,
+        filter: hovered ? 'drop-shadow(0 8px 18px rgba(234, 88, 12, 0.35))' : 'none',
+        transition: 'opacity 0.25s ease, color 0.25s ease, filter 0.25s ease'
+      }}
+    >
+      <motion.div
+        animate={{ rotate: item.dir === 1 ? [0, 360] : [360, 0] }}
+        transition={{ duration: item.duration, repeat: Infinity, ease: 'linear' }}
+      >
+        <ToolIcon size={item.size} strokeWidth={1.45} />
+      </motion.div>
+    </motion.div>
+  );
+}
 
 export function MechanicalToolsBackdrop() {
   return (
@@ -26,6 +95,7 @@ export function MechanicalToolsBackdrop() {
         background: 'linear-gradient(135deg, #FAF7F2 0%, #F5EFE6 48%, #EFE7DC 100%)'
       }}
     >
+      {/* Warm Ambient Glass Glow Orbs */}
       <motion.div
         animate={{ x: [0, 45, 0], y: [0, -30, 0], scale: [1, 1.08, 1] }}
         transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
@@ -55,37 +125,14 @@ export function MechanicalToolsBackdrop() {
         }}
       />
 
-      {MECHANICAL_ELEMENTS.map((item) => {
-        const ToolIcon = item.Icon;
-        return (
-          <motion.div
-            key={item.id}
-            animate={{
-              rotate: item.dir === 1 ? [0, 360] : [360, 0],
-              y: [0, item.driftY, 0]
-            }}
-            transition={{
-              rotate: { duration: item.duration, repeat: Infinity, ease: 'linear' },
-              y: { duration: item.duration * 0.45, repeat: Infinity, ease: 'easeInOut' }
-            }}
-            style={{
-              position: 'absolute',
-              top: item.top,
-              left: item.left,
-              right: item.right,
-              opacity: item.opacity,
-              color: '#9A3412'
-            }}
-          >
-            <ToolIcon size={item.size} strokeWidth={1.35} />
-          </motion.div>
-        );
-      })}
+      {/* Interactive Floating Hammers, Wrenches, Screwdrivers & Gears */}
+      {MECHANICAL_ELEMENTS.map((item) => (
+        <InteractiveToolItem key={item.id} item={item} />
+      ))}
     </div>
   );
 }
 
-// Preserved for Login.jsx & AdminPanel.jsx compatibility
 export function MotionVideoBackdrop({ variant = 'customer' }) {
   if (variant === 'admin') {
     return (

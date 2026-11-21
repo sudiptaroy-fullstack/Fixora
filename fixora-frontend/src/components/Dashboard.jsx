@@ -185,13 +185,27 @@ const NOTEWORTHY_CARDS = [
   }
 ];
 
-export default function Dashboard({ userSession, onLogout }) {
+export default function Dashboard({ userSession,
+  onLogout,
+  externalSection,
+  onNavigateSection }) {
   const userPhone = userSession?.phone || '';
   const userRole = userSession?.role || 'CUSTOMER';
 
   const [section, setSection] = useState('HOME');
   const [activeDockTab, setActiveDockTab] = useState('UC');
   const [activeServiceCategory, setActiveServiceCategory] = useState(null);
+  useEffect(() => {
+  if (externalSection && externalSection !== 'LOGIN' && externalSection !== 'ADMIN') {
+    setSection(externalSection);
+    if (externalSection === 'HOME') {
+      setActiveServiceCategory(null);
+      setActiveDockTab('UC');
+    } else if (externalSection === 'BOOKINGS') {
+      setActiveDockTab('BOOKINGS');
+    }
+  }
+}, [externalSection]);
   const [serviceProviders, setServiceProviders] = useState([]);
   const [loadingServiceProviders, setLoadingServiceProviders] = useState(false);
 
@@ -301,21 +315,23 @@ export default function Dashboard({ userSession, onLogout }) {
   }, [userPhone, userRole]);
 
   const handleNavbarSelect = (target) => {
-    setSection(target);
-    if (target === 'HOME') {
-      setActiveServiceCategory(null);
-      setActiveDockTab('UC');
-    } else if (target === 'BOOKINGS') {
-      setActiveDockTab('BOOKINGS');
-    }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  setSection(target);
+  if (onNavigateSection) onNavigateSection(target);
+  if (target === 'HOME') {
+    setActiveServiceCategory(null);
+    setActiveDockTab('UC');
+  } else if (target === 'BOOKINGS') {
+    setActiveDockTab('BOOKINGS');
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
 
-  const handleOpenServicePage = async (categoryName) => {
-    setActiveServiceCategory(categoryName);
-    setSection('SERVICE_DETAIL');
-    setLoadingServiceProviders(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+ const handleOpenServicePage = async (categoryName) => {
+  setActiveServiceCategory(categoryName);
+  setSection('SERVICE_DETAIL');
+  if (onNavigateSection) onNavigateSection('SERVICE_DETAIL');
+  setLoadingServiceProviders(true);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 
     try {
       const res = await getProvidersByService(categoryName);
